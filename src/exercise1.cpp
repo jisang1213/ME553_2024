@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
   anymal->updateKinematics();
 
   // debug sphere
-  auto debugSphere = server.addVisualSphere("debug_sphere", 0.02);
+  auto debugSphere = server.addVisualSphere("debug_sphere", 0.041);
   debugSphere->setColor(1,0,0,1);
   debugSphere->setPosition(getEndEffectorPosition(jointNominalConfig));
 
