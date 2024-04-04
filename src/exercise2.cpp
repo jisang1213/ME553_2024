@@ -44,6 +44,11 @@ int main(int argc, char* argv[]) {
     anymal->getFrameVelocity("LH_shank_fixed_LH_FOOT", footVel);
     anymal->getFrameAngularVelocity("LH_shank_fixed_LH_FOOT", footAngVel);
 
+
+    std::cout<< "vel = " << footVel.e().norm() << std::endl;
+    std::cout<< "my vel = " << getFootLinearVelocity(gc, gv).norm() << std::endl;
+
+
     if((footVel.e() - getFootLinearVelocity(gc, gv)).norm() < 1e-8) {
       std::cout<<"the linear velocity is correct "<<std::endl;
     } else {

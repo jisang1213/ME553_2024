@@ -28,6 +28,10 @@ class Joint{
       xyz.setZero();
     }
 
+    Eigen::Vector3d getPos(){
+      return parent->getPos_helper(xyz);
+    }
+
   private:
     Eigen::Matrix3d Rot(){
       Eigen::Matrix3d Rx, Ry, Rz;
@@ -50,15 +54,24 @@ class Joint{
     
       return Rz*Ry*Rx;
     }
+
+    Eigen::Vector3d getPos_helper(Eigen::Vector3d pos){
+      if(isBase){
+        return pos;
+      }
+      return parent->getPos_helper(xyz + getRot()*pos);
+    }
+
 };
 
-//Recursive function to get end-effector position relative to baselink in robot frame
-Eigen::Vector3d getPos(Joint *joint, Eigen::Vector3d pos){
-  if(joint->isBase){
-    return pos;
-  }
-  return getPos(joint->parent, joint->xyz + joint->getRot() * pos);
-}
+// //Recursive function to get end-effector position relative to baselink in robot frame
+// Eigen::Vector3d getPos(Joint *joint, Eigen::Vector3d pos){
+//   if(joint->isBase){
+//     return pos;
+//   }
+//   return getPos(joint->parent, joint->xyz + joint->getRot() * pos);
+// }
+
 
 /// do not change the name of the method
 inline Eigen::Vector3d getEndEffectorPosition (const Eigen::VectorXd& gc) {
@@ -123,7 +136,7 @@ inline Eigen::Vector3d getEndEffectorPosition (const Eigen::VectorXd& gc) {
   Eigen::Vector3d pos;
   pos.setZero();
 
-  return gc.head(3) + orien * getPos(&EndEffector, pos);
+  return gc.head(3) + orien * EndEffector.getPos();
 }
 
 #endif // ME553_2022_SOLUTIONS_EXERCISE1_STUDENTID_HPP_
