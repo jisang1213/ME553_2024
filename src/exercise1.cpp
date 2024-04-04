@@ -5,11 +5,12 @@
 #define _MAKE_STR(x) __MAKE_STR(x)
 #define __MAKE_STR(x) #x
 
-#include "exercise1_STUDENTID.hpp"
+#include "exercise1_copy.hpp"
 #include "raisim/RaisimServer.hpp"
 
 
 int main(int argc, char* argv[]) {
+
   // create raisim world
   raisim::World world; // physics world
   raisim::RaisimServer server(&world); // visualization server
@@ -27,7 +28,7 @@ int main(int argc, char* argv[]) {
   anymal->updateKinematics();
 
   // debug sphere
-  auto debugSphere = server.addVisualSphere("debug_sphere", 0.041);
+  auto debugSphere = server.addVisualSphere("debug_sphere", 0.042);
   debugSphere->setColor(1,0,0,1);
   debugSphere->setPosition(getEndEffectorPosition(jointNominalConfig));
 

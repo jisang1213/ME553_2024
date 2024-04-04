@@ -10,5 +10,6 @@ create_executable(exercise1 src/exercise1.cpp)
 # examples
 create_executable(rotation_example_angle_axis src/rotation_example_angle_axis.cpp)
 create_executable(rotation_example_euler_angles src/rotation_example_euler_angles.cpp)
+create_executable(dzhan src/dzhan.cpp)
 
 
