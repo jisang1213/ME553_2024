@@ -93,11 +93,60 @@ make -j
 
 
 
-//HW3
+//EXCERCISE 3
 
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =================================================================================== -->
+<!--   Copyright 2020 ANYbotics, https://www.anybotics.com                               -->
+<!-- =================================================================================== -->
+<!-- This file contains the description of the ANYmal C robot. -->
 <robot name="anymal">
     <!-- Base link -->
     <link name="base">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/base.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <box size="0.58 0.14 0.18"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="0.2175 0.07 0"/>
+            <geometry>
+                <cylinder length="0.145" radius="0.09"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.2175 0.07 0"/>
+            <geometry>
+                <cylinder length="0.145" radius="0.09"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="0.2175 -0.07 0"/>
+            <geometry>
+                <cylinder length="0.145" radius="0.09"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.2175 -0.07 0"/>
+            <geometry>
+                <cylinder length="0.145" radius="0.09"/>
+            </geometry>
+        </collision>
+        <!-- Shell self filtering -->
+        <self_filter>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <box size="1.05 0.5 0.5"/>
+            </geometry>
+        </self_filter>
+    </link>
     <!-- Fixed joint to add dummy inertia link -->
     <joint name="base_to_base_inertia" type="fixed">
         <parent link="base"/>
@@ -120,6 +169,12 @@ make -j
     </joint>
     <!-- Top shell link -->
     <link name="top_shell">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/top_shell.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.00777 -0.00013 0.06523"/>
             <mass value="0.534"/>
@@ -134,6 +189,12 @@ make -j
     </joint>
     <!-- Bottom shell link -->
     <link name="bottom_shell">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/bottom_shell.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.00333 1e-05 -0.07705"/>
             <mass value="1.15"/>
@@ -148,6 +209,12 @@ make -j
     </joint>
     <!-- Remote link -->
     <link name="remote">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/remote.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.171 0.002 0.096"/>
             <mass value="0.3262"/>
@@ -162,6 +229,12 @@ make -j
     </joint>
     <!-- Handle link -->
     <link name="handle">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/handle.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="0.37801 0.0 0.1372"/>
             <mass value="0.314"/>
@@ -176,6 +249,30 @@ make -j
     </joint>
     <!-- Shell link -->
     <link name="face_front">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/face.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0.055 0 0"/>
+            <geometry>
+                <box size="0.11 0.14 0.18"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="0.055 0.07 0"/>
+            <geometry>
+                <cylinder length="0.11" radius="0.09"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="0.055 -0.07 0"/>
+            <geometry>
+                <cylinder length="0.11" radius="0.09"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.042 -0.001 0.004"/>
             <mass value="0.73"/>
@@ -191,6 +288,12 @@ make -j
     </joint>
     <!-- Camera link -->
     <link name="depth_camera_front_camera">
+        <visual>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/depth_camera.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.021 -0.002 0.025"/>
             <mass value="0.16043"/>
@@ -239,6 +342,12 @@ make -j
     </joint>
     <!-- Camera link -->
     <link name="wide_angle_camera_front_camera">
+        <visual>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/wide_angle_camera.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.053 -0.001 0.025"/>
             <mass value="0.287"/>
@@ -261,6 +370,30 @@ make -j
     </joint>
     <!-- Shell link -->
     <link name="face_rear">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/face.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0.055 0 0"/>
+            <geometry>
+                <box size="0.11 0.14 0.18"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="0.055 0.07 0"/>
+            <geometry>
+                <cylinder length="0.11" radius="0.09"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="0.055 -0.07 0"/>
+            <geometry>
+                <cylinder length="0.11" radius="0.09"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.042 -0.001 0.004"/>
             <mass value="0.73"/>
@@ -276,6 +409,12 @@ make -j
     </joint>
     <!-- Camera link -->
     <link name="depth_camera_rear_camera">
+        <visual>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/depth_camera.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.021 -0.002 0.025"/>
             <mass value="0.16043"/>
@@ -324,6 +463,12 @@ make -j
     </joint>
     <!-- Camera link -->
     <link name="wide_angle_camera_rear_camera">
+        <visual>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/wide_angle_camera.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.053 -0.001 0.025"/>
             <mass value="0.287"/>
@@ -346,6 +491,12 @@ make -j
     </joint>
     <!-- Shell link -->
     <link name="battery">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/battery.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.00067 -0.00023 -0.03362"/>
             <mass value="5.53425"/>
@@ -368,6 +519,19 @@ make -j
         </inertial>
     </link>
     <link name="imu_link">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0.005"/>
+            <geometry>
+                <box size="0.024 0.024 0.01"/>
+            </geometry>
+            <material name="orange"/>
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0.005"/>
+            <geometry>
+                <box size="0.024 0.024 0.01"/>
+            </geometry>
+        </collision>
         <inertial>
             <mass value="0.01"/>
             <origin xyz="0 0 0"/>
@@ -388,6 +552,12 @@ make -j
     </joint>
     <!-- Camera link -->
     <link name="depth_camera_left_camera">
+        <visual>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/depth_camera.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.021 -0.002 0.025"/>
             <mass value="0.16043"/>
@@ -436,6 +606,12 @@ make -j
     </joint>
     <!-- Camera link -->
     <link name="depth_camera_right_camera">
+        <visual>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/depth_camera.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.021 -0.002 0.025"/>
             <mass value="0.16043"/>
@@ -483,6 +659,18 @@ make -j
     </joint>
     <!-- Velodyne cage link -->
     <link name="lidar_cage">
+        <visual>
+            <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/lidar_cage.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0.06"/>
+            <geometry>
+                <cylinder length="0.12" radius="0.07"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0.0 0.0 0.0" xyz="0.002 0.0 0.099"/>
             <mass value="0.545"/>
@@ -502,6 +690,12 @@ make -j
             <mass value="0.695"/>
             <inertia ixx="0.000846765" ixy="6.9565e-05" ixz="0.00027111" iyy="0.001367583" iyz="5.8984e-05" izz="0.001363673"/>
         </inertial>
+        <visual>
+            <origin xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/lidar.dae"/>
+            </geometry>
+        </visual>
     </link>
     <!-- joint base HAA -->
     <joint name="base_LF_HAA" type="fixed">
@@ -511,6 +705,12 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="LF_HAA">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -523,6 +723,8 @@ make -j
         <child link="LF_HIP"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="1 0 0"/>
+        <limit effort="80.0" lower="-0.72" upper="0.49" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="LF_HIP">
@@ -540,6 +742,12 @@ make -j
     </joint>
     <!-- Hip link -->
     <link name="LF_hip_fixed">
+        <visual>
+            <origin rpy="0 0 0.0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/hip_l.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="0.048 0.008 -0.003"/>
             <mass value="0.74"/>
@@ -554,6 +762,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="LF_HFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -566,6 +786,8 @@ make -j
         <child link="LF_THIGH"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="LF_THIGH">
@@ -583,6 +805,25 @@ make -j
     </joint>
     <!-- Thigh link -->
     <link name="LF_thigh_fixed">
+        <visual>
+            <origin rpy="0 0 0.0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/thigh.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Thigh collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 0.04 0"/>
+            <geometry>
+                <cylinder length="0.08" radius="0.065"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0.03 -0.1413135"/>
+            <geometry>
+                <box size="0.075 0.06 0.282627"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.0 0.018 -0.169"/>
             <mass value="1.03"/>
@@ -597,6 +838,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="LF_KFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -609,6 +862,8 @@ make -j
         <child link="LF_SHANK"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="LF_SHANK">
@@ -626,6 +881,25 @@ make -j
     </joint>
     <!-- Shank link -->
     <link name="LF_shank_fixed">
+        <visual>
+            <origin rpy="0 0 0.0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/shank_l.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Shank collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 0.02 0"/>
+            <geometry>
+                <cylinder length="0.04" radius="0.06"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0.057499 0.02 0"/>
+            <geometry>
+                <box size="0.114998 0.0675 0.04"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.03463 0.00688 0.00098"/>
             <mass value="0.33742"/>
@@ -641,6 +915,26 @@ make -j
     </joint>
     <!-- Foot link -->
     <link name="LF_FOOT">
+        <visual>
+            <origin rpy="0 0 -0.785398163397" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/foot.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Adapter collision -->
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0.168985"/>
+            <geometry>
+                <cylinder length="0.282504" radius="0.0175"/>
+            </geometry>
+        </collision>
+        <!-- Foot collision -->
+        <collision>
+            <origin xyz="0 0 0.0225"/>
+            <geometry>
+                <sphere radius="0.03"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.00948 -0.00948 0.1468"/>
             <mass value="0.25"/>
@@ -655,6 +949,12 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="RF_HAA">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -667,6 +967,8 @@ make -j
         <child link="RF_HIP"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="1 0 0"/>
+        <limit effort="80.0" lower="-0.49" upper="0.72" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="RF_HIP">
@@ -684,6 +986,12 @@ make -j
     </joint>
     <!-- Hip link -->
     <link name="RF_hip_fixed">
+        <visual>
+            <origin rpy="0 0 0.0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/hip_r.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="0.048 -0.008 -0.003"/>
             <mass value="0.74"/>
@@ -698,6 +1006,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="RF_HFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -710,6 +1030,8 @@ make -j
         <child link="RF_THIGH"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="-1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="RF_THIGH">
@@ -727,6 +1049,25 @@ make -j
     </joint>
     <!-- Thigh link -->
     <link name="RF_thigh_fixed">
+        <visual>
+            <origin rpy="0 0 -3.14159265359" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/thigh.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Thigh collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 -0.04 0"/>
+            <geometry>
+                <cylinder length="0.08" radius="0.065"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 -0.03 -0.1413135"/>
+            <geometry>
+                <box size="0.075 0.06 0.282627"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.0 -0.018 -0.169"/>
             <mass value="1.03"/>
@@ -741,6 +1082,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="RF_KFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -753,6 +1106,8 @@ make -j
         <child link="RF_SHANK"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="-1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="RF_SHANK">
@@ -770,6 +1125,25 @@ make -j
     </joint>
     <!-- Shank link -->
     <link name="RF_shank_fixed">
+        <visual>
+            <origin rpy="0 0 0.0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/shank_r.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Shank collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 -0.02 0"/>
+            <geometry>
+                <cylinder length="0.04" radius="0.06"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0.057499 -0.02 0"/>
+            <geometry>
+                <box size="0.114998 0.0675 0.04"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.03463 -0.00688 0.00098"/>
             <mass value="0.33742"/>
@@ -785,6 +1159,26 @@ make -j
     </joint>
     <!-- Foot link -->
     <link name="RF_FOOT">
+        <visual>
+            <origin rpy="0 0 0.785398163397" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/foot.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Adapter collision -->
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0.168985"/>
+            <geometry>
+                <cylinder length="0.282504" radius="0.0175"/>
+            </geometry>
+        </collision>
+        <!-- Foot collision -->
+        <collision>
+            <origin xyz="0 0 0.0225"/>
+            <geometry>
+                <sphere radius="0.03"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="0.00948 0.00948 0.1468"/>
             <mass value="0.25"/>
@@ -799,6 +1193,12 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="LH_HAA">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -811,6 +1211,8 @@ make -j
         <child link="LH_HIP"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="-1 0 0"/>
+        <limit effort="80.0" lower="-0.72" upper="0.49" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="LH_HIP">
@@ -828,6 +1230,12 @@ make -j
     </joint>
     <!-- Hip link -->
     <link name="LH_hip_fixed">
+        <visual>
+            <origin rpy="0 0 -3.14159265359" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/hip_r.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.048 0.008 -0.003"/>
             <mass value="0.74"/>
@@ -842,6 +1250,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="LH_HFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -854,6 +1274,8 @@ make -j
         <child link="LH_THIGH"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="LH_THIGH">
@@ -871,6 +1293,25 @@ make -j
     </joint>
     <!-- Thigh link -->
     <link name="LH_thigh_fixed">
+        <visual>
+            <origin rpy="0 0 0.0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/thigh.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Thigh collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 0.04 0"/>
+            <geometry>
+                <cylinder length="0.08" radius="0.065"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0.03 -0.1413135"/>
+            <geometry>
+                <box size="0.075 0.06 0.282627"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.0 0.018 -0.169"/>
             <mass value="1.03"/>
@@ -885,6 +1326,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="LH_KFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -897,6 +1350,8 @@ make -j
         <child link="LH_SHANK"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="LH_SHANK">
@@ -914,6 +1369,25 @@ make -j
     </joint>
     <!-- Shank link -->
     <link name="LH_shank_fixed">
+        <visual>
+            <origin rpy="0 0 -3.14159265359" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/shank_r.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Shank collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 0.02 0"/>
+            <geometry>
+                <cylinder length="0.04" radius="0.06"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="-0.057499 0.02 0"/>
+            <geometry>
+                <box size="0.114998 0.0675 0.04"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.03463 0.00688 0.00098"/>
             <mass value="0.33742"/>
@@ -929,6 +1403,26 @@ make -j
     </joint>
     <!-- Foot link -->
     <link name="LH_FOOT">
+        <visual>
+            <origin rpy="0 0 -2.35619449019" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/foot.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Adapter collision -->
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0.168985"/>
+            <geometry>
+                <cylinder length="0.282504" radius="0.0175"/>
+            </geometry>
+        </collision>
+        <!-- Foot collision -->
+        <collision>
+            <origin xyz="0 0 0.0225"/>
+            <geometry>
+                <sphere radius="0.03"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.00948 -0.00948 0.1468"/>
             <mass value="0.25"/>
@@ -943,6 +1437,12 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="RH_HAA">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -955,6 +1455,8 @@ make -j
         <child link="RH_HIP"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="-1 0 0"/>
+        <limit effort="80.0" lower="-0.49" upper="0.72" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="RH_HIP">
@@ -972,6 +1474,12 @@ make -j
     </joint>
     <!-- Hip link -->
     <link name="RH_hip_fixed">
+        <visual>
+            <origin rpy="0 0 -3.14159265359" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/hip_l.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.048 -0.008 -0.003"/>
             <mass value="0.74"/>
@@ -986,6 +1494,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="RH_HFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -998,6 +1518,8 @@ make -j
         <child link="RH_THIGH"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="-1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="RH_THIGH">
@@ -1015,6 +1537,25 @@ make -j
     </joint>
     <!-- Thigh link -->
     <link name="RH_thigh_fixed">
+        <visual>
+            <origin rpy="0 0 -3.14159265359" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/thigh.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Thigh collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 -0.04 0"/>
+            <geometry>
+                <cylinder length="0.08" radius="0.065"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="0 0 0" xyz="0 -0.03 -0.1413135"/>
+            <geometry>
+                <box size="0.075 0.06 0.282627"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.0 -0.018 -0.169"/>
             <mass value="1.03"/>
@@ -1029,6 +1570,18 @@ make -j
     </joint>
     <!-- Drive link -->
     <link name="RH_KFE">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/drive.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <collision>
+            <origin rpy="0 1.57079632679 0" xyz="-0.07 0 0"/>
+            <geometry>
+                <cylinder length="0.14" radius="0.05"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
@@ -1041,6 +1594,8 @@ make -j
         <child link="RH_SHANK"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
         <axis xyz="-1 0 0"/>
+        <limit effort="80.0" lower="-9.42477796077" upper="9.42477796077" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
     </joint>
     <!-- Drive output link -->
     <link name="RH_SHANK">
@@ -1058,6 +1613,25 @@ make -j
     </joint>
     <!-- Shank link -->
     <link name="RH_shank_fixed">
+        <visual>
+            <origin rpy="0 0 -3.14159265359" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/shank_l.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Shank collision -->
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="0 -0.02 0"/>
+            <geometry>
+                <cylinder length="0.04" radius="0.06"/>
+            </geometry>
+        </collision>
+        <collision>
+            <origin rpy="1.57079632679 0 0" xyz="-0.057499 -0.02 0"/>
+            <geometry>
+                <box size="0.114998 0.0675 0.04"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.03463 -0.00688 0.00098"/>
             <mass value="0.33742"/>
@@ -1073,6 +1647,26 @@ make -j
     </joint>
     <!-- Foot link -->
     <link name="RH_FOOT">
+        <visual>
+            <origin rpy="0 0 -3.92699081699" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/foot.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+        <!-- Adapter collision -->
+        <collision>
+            <origin rpy="0 0 0" xyz="0 0 0.168985"/>
+            <geometry>
+                <cylinder length="0.282504" radius="0.0175"/>
+            </geometry>
+        </collision>
+        <!-- Foot collision -->
+        <collision>
+            <origin xyz="0 0 0.0225"/>
+            <geometry>
+                <sphere radius="0.03"/>
+            </geometry>
+        </collision>
         <inertial>
             <origin rpy="0 0 0" xyz="-0.00948 0.00948 0.1468"/>
             <mass value="0.25"/>
@@ -1087,6 +1681,12 @@ make -j
     </joint>
     <!-- Hatch link -->
     <link name="hatch">
+        <visual>
+            <origin rpy="0 0 0" xyz="0.116 0 0.073"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/hatch.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="0.116 0.0 0.0758"/>
             <mass value="0.142"/>
@@ -1094,3 +1694,4 @@ make -j
         </inertial>
     </link>
 </robot>
+
