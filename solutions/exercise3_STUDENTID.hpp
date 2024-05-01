@@ -117,23 +117,27 @@ CRBA(Joint* joint){
   if joint->childlink is leaf:
 
 
-
   for child in children:
     //down path:
     CRBA(joint->parent);
     //up path:
 
+}
+
+Joint eliminate_fixed_joints(Joint base){
+  //algorithm to eliminate fixed joints so only revolute joints remain
+  //Find new COM and Inertia for each composite body
 
 }
 
 /// do not change the name of the method
 inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
-  /// !!!!!!!!!! NO RAISIM FUNCTIONS HERE !!!!!!!!!!!!!!!!!
+  //URDF Parsing:
   Joint base, base_face_front, base_face_rear, base_to_docking_hatch_cover, base_to_lidar_cage, lidar_cage_to_lidar;
   Link base_inertia, hatch, face_front, face_rear, battery, docking_hatch_cover, lidar;
 
-  //Base
+  //Joint base;
   base.isBase = true;
   //links
   base.childlinks.push_back(&base_inertia);
@@ -149,61 +153,77 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   base.childjoints.push_back(&base_RF_HAA);
   base.childjoints.push_back(&base_RH_HAA);
 
-  
+  //Link base_inertia;
+  base_inertia.isleaf = true;
   base_inertia.parentJoint = &base;
   base_inertia.origin.xyz << -0.018, -0.002, 0.024;
   base_inertia.mass = 6.222;
   base_inertia.inertia_b = inertia_tensor(0.017938806, 0.00387963, 0.001500772, 0.370887745, 6.8963e-05, 0.372497653);
 
-
+  //Link hatch;
+  hatch.isleaf = true;
   hatch.parentJoint = &base;
   hatch.origin.xyz << 0.116, 0.0, 0.0758;
   hatch.mass = 0.142;
   hatch.inertia_b = inertia_tensor(0.001, 0.001, 0.001, 0.001, 0.001, 0.001);
 
+  //Joint base_face_front;
   base_face_front.parentJoint = &base;
   base_face_front.childlinks.push_back(&face_front);
   base_face_front.origin.xyz << 0.4145, 0, 0;
 
-  
+  //Link face_front;
+  face_front.isleaf = true;
   face_front.parentJoint = &base_face_front;
   face_front.origin.xyz << 0.042, -0.001, 0.004;
   face_front.mass = 0.73;
   face_front.inertia_b = inertia_tensor(0.005238611, 1.7609e-05, 7.2167e-05, 0.002643098, 1.9548e-05, 0.004325938);
 
+  //Joint base_face_rear;
   base_face_rear.parentJoint = &base;
   base_face_rear.childlinks.push_back(&face_rear);
   base_face_rear.origin.rpy << 0, 0, 3.14159265359;
   base_face_rear.origin.xyz << -0.4145, 0, 0;
 
+  //Link face_rear;
+  face_rear.isleaf = true;
   face_rear.parentJoint = &base_face_rear;
   face_rear.origin.xyz << 0.042, -0.001, 0.004;
   face_rear.mass = 0.73;
   face_rear.inertia_b = inertia_tensor(0.005238611, 1.7609e-05, 7.2167e-05, 0.002643098, 1.9548e-05, 0.004325938);
 
+  //Link battery;
+  battery.isleaf = true;
   battery.parentJoint = &base;
   battery.origin.xyz << -0.00067, -0.00023, -0.03362;
   battery.mass = 5.53425;
   battery.inertia_b = inertia_tensor(0.00749474794, 0.00016686282, 7.82763e-05, 0.0722338913, 1.42902e-06, 0.07482717535);
 
+  //Joint base_to_docking_hatch_cover;
   base_to_docking_hatch_cover.parentJoint = &base;
   base_to_docking_hatch_cover.childlinks.push_back(&docking_hatch_cover);
   base_to_docking_hatch_cover.origin.xyz << 0.343, 0.0, -0.07;
 
+  //Link docking_hatch_cover;
+  docking_hatch_cover.isleaf = true;
   docking_hatch_cover.parentJoint = &base_to_docking_hatch_cover;
   docking_hatch_cover.origin.xyz << -0.003 0.0 0.005;
   docking_hatch_cover.mass = 0.065;
   docking_hatch_cover.inertia_b = inertia_tensor(0.00063283, 0.0, 3.45e-07, 0.00110971, 0.0, 0.00171883);
 
+  //Joint base_to_lidar_cage;
   base_to_lidar_cage.parentJoint = &base;
   base_to_lidar_cage.childjoints.push_back(&lidar_cage_to_lidar);
   base_to_lidar_cage.origin.xyz << -0.364, 0.0, 0.0735;
 
+  //Joint lidar_cage_to_lidar;
   lidar_cage_to_lidar.parentJoint = &base_to_lidar_cage;
   lidar_cage_to_lidar.childlinks.push_back(&lidar);
   lidar_cage_to_lidar.origin.xyz << 0.0, 0.0, 0.0687;
   lidar_cage_to_lidar.origin.rpy << 0.0, 0.0, -1.57079632679;
 
+  //Link lidar;
+  lidar.isleaf = true;
   lidar.parentJoint = &lidar_cage_to_lidar;
   lidar.origin.xyz << -0.012, 0.001, -0.008;
   lidar.mass = 0.695;
@@ -225,6 +245,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_HAA.mass = 2.04;
   LF_HAA.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
+  LF_HAA_rev.jointID = 6;
   LF_HAA_rev.isrev = true;
   LF_HAA_rev.axis = 1;
   LF_HAA_rev.angle = gc[7]; //TOOD
@@ -257,6 +278,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_HFE.mass = 2.04;
   LF_HFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
+  LF_HFE_rev.jointID = 7;
   LF_HFE_rev.isrev = true
   LF_HFE_rev.axis = 1;
   LF_HFE_rev.angle = gc[8]; //TODO
@@ -289,6 +311,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_KFE.mass = 2.04;
   LF_KFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
+  LF_KFE_rev.jointID = 8;
   LF_KFE_rev.isrev = true
   LF_KFE_rev.axis = 1;
   LF_KFE_rev.angle = gc[9]; //TODO
@@ -314,6 +337,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_shank_fixed_LF_FOOT.childlinks.push_back(&LF_FOOT);
   LF_shank_fixed_LF_FOOT.origin.xyz << 0.08795, 0.01305, -0.33797;
 
+  LF_FOOT.isleaf = true;
   LF_FOOT.parentJoint = &LF_shank_fixed_LF_FOOT;
   LF_FOOT.origin.xyz << 0.00948, -0.00948, 0.1468;
   LF_FOOT.mass = 0.25;
@@ -339,6 +363,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RF_HAA.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint RF_HAA_rev;
+  RF_HAA_rev.jointID = 9;
   RF_HAA_rev.isrev = true;
   RF_HAA_rev.axis = 1;
   RF_HAA_rev.angle = gc[10]; //TOOD
@@ -377,6 +402,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RF_HFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint RF_HFE_rev;
+  RF_HFE_rev.jointID = 10;
   RF_HFE_rev.isrev = true
   RF_HFE_rev.axis = -1;
   RF_HFE_rev.angle = gc[11]; //TOOD
@@ -415,6 +441,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RF_KFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint RF_KFE_rev;
+  RF_KFE_rev.jointID = 11;
   RF_KFE_rev.isrev = true
   RF_KFE_rev.axis = -1;
   RF_KFE_rev.angle = gc[12]; //TOOD
@@ -445,6 +472,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RF_shank_fixed_RF_FOOT.origin.xyz << 0.08795, -0.01305, -0.33797;
 
   //Link RF_FOOT;
+  RF_FOOT.isleaf = true;
   RF_FOOT.parentJoint = &RF_shank_fixed_RF_FOOT;
   RF_FOOT.origin.xyz << 0.00948, 0.00948, 0.1468;
   RF_FOOT.mass = 0.25;
@@ -470,6 +498,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LH_HAA.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint LH_HAA_rev;
+  LH_HAA_rev.jointID = 12;
   LH_HAA_rev.isrev = true;
   LH_HAA_rev.axis = -1;
   LH_HAA_rev.angle = gc[13]; //TOOD
@@ -508,6 +537,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LH_HFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint LH_HFE_rev;
+  LH_HFE_rev.jointID = 13;
   LH_HFE_rev.isrev = true
   LH_HFE_rev.axis = 1;
   LH_HFE_rev.angle = gc[14]; //TOOD
@@ -546,6 +576,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LH_KFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint LH_KFE_rev;
+  LH_KFE_rev.jointID = 14;
   LH_KFE_rev.isrev = true
   LH_KFE_rev.axis = 1;
   LH_KFE_rev.angle = gc[15]; //TOOD
@@ -576,6 +607,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LH_shank_fixed_LH_FOOT.origin.xyz << -0.08795, 0.01305, -0.33797;
 
   //Link LH_FOOT;
+  LH_FOOT.isleaf = true;
   LH_FOOT.parentJoint = &LH_shank_fixed_LH_FOOT;
   LH_FOOT.origin.xyz << -0.00948, -0.00948, 0.1468;
   LH_FOOT.mass = 0.25;
@@ -601,6 +633,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RH_HAA.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint RH_HAA_rev;
+  RH_HAA_rev.jointID = 15;
   RH_HAA_rev.isrev = true;
   RH_HAA_rev.axis = -1;
   RH_HAA_rev.angle = gc[16]; //TOOD
@@ -639,6 +672,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RH_HFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint RH_HFE_rev;
+  RH_HFE_rev.jointID = 16;
   RH_HFE_rev.isrev = true
   RH_HFE_rev.axis = -1;
   RH_HFE_rev.angle = gc[17]; //TOOD
@@ -677,6 +711,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RH_KFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
   //Joint RH_KFE_rev;
+  RH_KFE_rev.jointID = 17;
   RH_KFE_rev.isrev = true
   RH_KFE_rev.axis = -1;
   RH_KFE_rev.angle = gc[18]; //TOOD
@@ -707,29 +742,21 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RH_shank_fixed_RH_FOOT.origin.xyz << -0.08795, -0.01305, -0.33797;
 
   //Link RH_FOOT;
+  RH_FOOT.isleaf = true;
   RH_FOOT.parentJoint = &RH_shank_fixed_RH_FOOT;
   RH_FOOT.origin.xyz << -0.00948, 0.00948, 0.1468;
   RH_FOOT.mass = 0.25;
   RH_FOOT.inertia_b = inertia_tensor(0.00317174097, 2.63048e-06, -6.815581e-05, 0.00317174092, -6.815583e-05, 8.319196e-05);
 //END OF RH
 
+  Joint newbase = eliminate_fixed_joints(base);
 
-
-
-
-
-
-
-
-
-
-
-
+  Eigen::MatrixXd massmatrix Ones(18,18);
 
 
   Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
   Eigen::Matrix3d orien = q.toRotationMatrix();
 
 
-  return Eigen::MatrixXd::Ones(18,18);
+  return 
 }
