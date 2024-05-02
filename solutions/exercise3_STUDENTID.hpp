@@ -4,6 +4,9 @@
 #include <Eigen/Geometry>
 #include <vector>
 
+class Joint;
+class Link;
+
 typedef struct{
   Eigen::Matrix3d orien;
   Eigen::Vector3d xyz;
@@ -18,7 +21,6 @@ typedef struct{
 
 class Joint{
   public:
-    const char *name;
     Origin origin;
     Eigen::Vector3d w_dir;   //axis direction vector in world frame
     Eigen::Vector3d w_pos;  //position of joint in world frame
@@ -28,11 +30,17 @@ class Joint{
     double axis, angle;
     bool isrev = false;
     bool isBase = false;
-    bool rotmat = false; //toggle true if origin.orien is computed
+    bool rotmat = false; //toggle true if origin.orien is assigned
     int jointID = -1;
 
     Eigen::Matrix3d getRot(){
       return Rot();
+    }
+    //this method returns the 6D motion subspace vector of the joint
+    Eigen::VectorXd S(){
+      Eigen::VectorXd subspace(6);
+      subspace << Eigen::VectorXd::Zero(3), w_dir;
+      return subspace;
     }
 
     Joint(){
@@ -50,7 +58,7 @@ class Joint{
       if(rotmat){
         return origin.orien;
       }
-      if(rev){
+      if(isrev){
         roll=axis*angle; pitch=0.; yaw=0.;
       }
       else{
@@ -68,17 +76,10 @@ class Joint{
     
       return Rz*Ry*Rx;
     }
-  //this function returns the 6D motion subspace vector of the joints
-  Eigen::VectorXd S(){
-    Eigen::VectorXd subspace(6);
-    subspace << Eigen::VectorXd::Zero(3), w_dir;
-    return subspace;
-  }
 };
 
 class Link{
   public:
-    const char *name;
     Origin origin;
     Joint *parentJoint = NULL;
     bool isleaf = false;
@@ -89,6 +90,10 @@ class Link{
 
     Eigen::Matrix3d getRot(){
       return Rot();
+    }
+
+    rigidbody RB(){
+      return rigidbody{inertia_w, COM, mass};
     }
 
     Link(){
@@ -107,9 +112,6 @@ class Link{
       if(rotmat){
         return origin.orien;
       }
-      if(rev){
-        roll=axis*angle; pitch=0.; yaw=0.;
-      }
       else{
         roll=origin.rpy[0]; pitch=origin.rpy[1]; yaw=origin.rpy[2];
       }
@@ -125,10 +127,15 @@ class Link{
     
       return Rz*Ry*Rx;
     }
-    rigidbody RB(){
-      return rigidbody{inertia_w, COM, mass};
-    }
 };
+
+Eigen::Matrix3d skew(Eigen::Vector3d vec){
+  Eigen::Matrix3d skew;
+  skew << 0.0, -vec.z(), vec.y(),
+            vec.z(), 0.0, -vec.x(),
+            -vec.y(), vec.x(), 0.0;
+  return skew;
+}
 
 Eigen::Matrix3d inertia_tensor(double ixx, double ixy, double ixz, double iyy, double iyz, double izz){
   Eigen::Matrix3d tensor;
@@ -146,7 +153,7 @@ rigidbody joinbodies(rigidbody B1, rigidbody B2){
   Eigen::Vector3d COM = newCOM(B1.m, B1.COM, B2.m, B2.COM);
   Eigen::Vector3d R1 = B1.COM - COM;
   Eigen::Vector3d R2 = B2.COM - COM;
-  Eigen::Matrix3d combined_inertia = (B1.I + B2.I) - (B1.m * R1.skew()*R1.skew()) - (B2.m * R2.skew()*R2.skew());
+  Eigen::Matrix3d combined_inertia = (B1.I + B2.I) - (B1.m * skew(R1)*skew(R1)) - (B2.m * skew(R2)*skew(R2));
   return rigidbody{combined_inertia, COM, B1.m + B2.m};
 }
 
@@ -154,10 +161,10 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
   //down path
   rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
 
-  //For each body, find the COM and inertia in the world frame
+  //For each body(link), find the COM and inertia in the world frame
   //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the Link class
   for(Link* childlink : curjoint->childlinks){
-    Eigen::Matrix3d R = rot*childlink.getRot(); //get the orientaion of the child links relative to the world frame
+    Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
     childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
     childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
   }
@@ -166,41 +173,38 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
   //Store these in Eigen::Vector3d w_dir and Eigen::Vector3d w_pos of the Joint class
   for(Joint* childjoint : curjoint->childjoints){
     if(childjoint->isrev){ //this should always evaluate true after eliminating fixed joints
-      Eigen::Matrix3d R = rot*childjoint.getRot();
+      //Eigen::Matrix3d R = rot*childjoint.getRot();    //axis is defined in parent frame
       Eigen::Vector3d axis(childjoint->axis, 0.0, 0.0);
-      childjoint->w_dir = R*axis;
+      childjoint->w_dir = rot*axis;
       childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
     }
   }
 
   //recursively call CRBA for each child joint and also create new a composite body by combining the
   //links of the current joint and the composite bodies of all child joints
-  rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0}
+  rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
   for (Joint* childjoint : curjoint->childjoints) {
     rigidbody jointRB = CRBA(childjoint, rot, massmatrix);    //CRBA() called here
     composite = joinbodies(composite, jointRB);
   }
   for(Link* childlink : curjoint->childlinks){
-    composite = joinbodies(composite, childlink.RB());
+    composite = joinbodies(composite, childlink->RB());
   }
 
   //up path
   Eigen::MatrixXd spatialInertial(6, 6);
   Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
   spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
-  spatialInertial.block(0, 3, 3, 3) = -composite.m * r_ac.skew();
-  spatialInertial.block(3, 0, 3, 3) = composite.m * r_ac.skew();
-  spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * r_ac.skew() * r_ac.skew());
+  spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
+  spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
+  spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
 
   //DOUBLE CHECK IF WE CAN MOVE THIS^ HERE INSTEAD OF IN ELSE STATEMENT
 
-
   if(curjoint->isBase){
-    //put the spatial inertial matrix in the top lefthand corner of the mass matrix
+    //put the spatial inertial matrix in the top 6x6 lefthand corner of the mass matrix
     //use composite to fill in spatial inertial matrix here
-
-
-    massmatrix.block<6, 6>(0, 0) = spatialInertial;
+    massmatrix.block(0, 0, 6, 6) = spatialInertial;
   }
   else{
     //compute and fill Mi,j for all i<=j
@@ -210,9 +214,9 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
 
       Eigen::MatrixXd IR = Eigen::MatrixXd::Identity(6, 6);
       Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
-      IR.block(0, 3, 3, 3) = rji.skew();
+      IR.block(0, 3, 3, 3) = skew(rji);
 
-      double Mij = curjoint.S().transpose()*spatialInertial*IR*joint_i.S();
+      double Mij = curjoint->S().transpose()*spatialInertial*IR*joint_i->S();
       massmatrix(joint_i->jointID, curjoint->jointID) = Mij;
 
       joint_i = joint_i->parentJoint;
@@ -222,17 +226,14 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
 }
 
 //function to eliminate all fixed joints
-Joint* eliminate_fixed_joints(Joint* curjoint){
-  //No base case (recursive call will stop at leaf joints)
-
+void eliminate_fixed_joints(Joint* curjoint){
   //down path
   //process all child nodes first
   for(Joint* children : curjoint->childjoints){
     eliminate_fixed_joints(children);
   }
-
   //up path
-  //if current joint is a fixed joint, make all child joint and links be attached to parent
+  //if current joint is fixed, move all child joint and links to parent
   //transform position of child links and joints from j' to j frame
   //also update their parent child relationship
   if(!curjoint->isrev){
@@ -261,45 +262,39 @@ Joint* eliminate_fixed_joints(Joint* curjoint){
       parent->childlinks.push_back(childlink);
     }
   }
-
-  return curjoint;
 }
 
 /// do not change the name of the method
 inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
-///INCLUDE BELOW LATER
-  Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
-  Eigen::Matrix3d orientation = q.toRotationMatrix();
-
-  //set origin of base
-  base.w_pos = gc.head(3);
-  base.origin.xyz = gc.head(3);
-  base.origin.orien = orientation;
-  base.rotmat = true;
-
-  Joint* newbase_ptr = eliminate_fixed_joints(&base);
-
-  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zeros(18, 18);
-  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
-
-  CRBA(newbase_ptr, rot, massMatrix);
-
-  //fill in lower triangle of the mass matrix
-  for (int i = 0; i < 18; i++) {
-    for (int j = 0; j < i; j++) {
-        massMatrix(i, j) = massMatrix(j, i);
-    }
-  }
-////////////
-
-  //URDF Parsing:
+//URDF Parsing:
   Joint base, base_face_front, base_face_rear, base_to_docking_hatch_cover, base_to_lidar_cage, lidar_cage_to_lidar;
   Link base_inertia, hatch, face_front, face_rear, battery, docking_hatch_cover, lidar;
 
+//LF
+  Joint base_LF_HAA, LF_HAA_rev, LF_HIP_LF_hip_fixed, LF_hip_fixed_LF_HFE, LF_HFE_rev, LF_THIGH_LF_thigh_fixed, 
+        LF_thigh_fixed_LF_KFE, LF_KFE_rev, LF_shank_LF_shank_fixed, LF_shank_fixed_LF_FOOT;
+  Link LF_HAA, LF_HIP, LF_hip_fixed, LF_HFE, LF_THIGH, LF_thigh_fixed, LF_KFE, LF_SHANK, LF_shank_fixed, LF_FOOT;
+
+//RF
+  Joint base_RF_HAA, RF_HAA_rev, RF_HIP_RF_hip_fixed, RF_hip_fixed_RF_HFE, RF_HFE_rev, RF_THIGH_RF_thigh_fixed, 
+        RF_thigh_fixed_RF_KFE, RF_KFE_rev, RF_shank_RF_shank_fixed, RF_shank_fixed_RF_FOOT;
+  Link RF_HAA, RF_HIP, RF_hip_fixed, RF_HFE, RF_THIGH, RF_thigh_fixed, RF_KFE, RF_SHANK, RF_shank_fixed, RF_FOOT;
+
+//LH
+  Joint base_LH_HAA, LH_HAA_rev, LH_HIP_LH_hip_fixed, LH_hip_fixed_LH_HFE, LH_HFE_rev, LH_THIGH_LH_thigh_fixed, 
+        LH_thigh_fixed_LH_KFE, LH_KFE_rev, LH_shank_LH_shank_fixed, LH_shank_fixed_LH_FOOT;
+  Link LH_HAA, LH_HIP, LH_hip_fixed, LH_HFE, LH_THIGH, LH_thigh_fixed, LH_KFE, LH_SHANK, LH_shank_fixed, LH_FOOT;
+
+//RH
+  Joint base_RH_HAA, RH_HAA_rev, RH_HIP_RH_hip_fixed, RH_hip_fixed_RH_HFE, RH_HFE_rev, RH_THIGH_RH_thigh_fixed, 
+        RH_thigh_fixed_RH_KFE, RH_KFE_rev, RH_shank_RH_shank_fixed, RH_shank_fixed_RH_FOOT;
+  Link RH_HAA, RH_HIP, RH_hip_fixed, RH_HFE, RH_THIGH, RH_thigh_fixed, RH_KFE, RH_SHANK, RH_shank_fixed, RH_FOOT;
+
+
   //Joint base;
   base.isBase = true;
-  base.isrev = true; //consider base to be a revolute joint (not fixed)
+  base.isrev = true; //for simplication, consider base to be revolute since it is not fixed
   //links
   base.childlinks.push_back(&base_inertia);
   base.childlinks.push_back(&hatch);
@@ -368,7 +363,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   //Link docking_hatch_cover;
   docking_hatch_cover.isleaf = true;
   docking_hatch_cover.parentJoint = &base_to_docking_hatch_cover;
-  docking_hatch_cover.origin.xyz << -0.003 0.0 0.005;
+  docking_hatch_cover.origin.xyz << -0.003, 0.0, 0.005;
   docking_hatch_cover.mass = 0.065;
   docking_hatch_cover.inertia_b = inertia_tensor(0.00063283, 0.0, 3.45e-07, 0.00110971, 0.0, 0.00171883);
 
@@ -391,10 +386,6 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   lidar.inertia_b = inertia_tensor(0.000846765, 6.9565e-05, 0.00027111, 0.001367583, 5.8984e-05, 0.001363673);
 
 //LF
-  Joint base_LF_HAA, LF_HAA_rev, LF_HIP_LF_hip_fixed, LF_hip_fixed_LF_HFE, LF_HFE_rev, LF_THIGH_LF_thigh_fixed, 
-        LF_thigh_fixed_LF_KFE, LF_KFE_rev, LF_shank_LF_shank_fixed, LF_shank_fixed_LF_FOOT;
-  Link LF_HAA, LF_HIP, LF_hip_fixed, LF_HFE, LF_THIGH, LF_thigh_fixed, LF_KFE, LF_SHANK, LF_shank_fixed, LF_FOOT;
-
   //Joint base_LF_HAA;
   base_LF_HAA.parentJoint = &base;
   base_LF_HAA.childlinks.push_back(&LF_HAA);
@@ -449,7 +440,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint LF_HFE_rev;
   LF_HFE_rev.jointID = 7;
-  LF_HFE_rev.isrev = true
+  LF_HFE_rev.isrev = true;
   LF_HFE_rev.axis = 1;
   LF_HFE_rev.angle = gc[8]; //TODO
   LF_HFE_rev.parentJoint = &LF_hip_fixed_LF_HFE;
@@ -469,7 +460,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Link LF_thigh_fixed;
   LF_thigh_fixed.parentJoint = &LF_THIGH_LF_thigh_fixed;
-  LF_thigh_fixed.origin.xyz << 0.0 0.018 -0.169;
+  LF_thigh_fixed.origin.xyz << 0.0, 0.018, -0.169;
   LF_thigh_fixed.mass = 1.03;
   LF_thigh_fixed.inertia_b = inertia_tensor(0.018644469, 5.2e-08, 1.0157e-05, 0.019312599, 0.002520077, 0.002838361);
 
@@ -478,7 +469,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_thigh_fixed_LF_KFE.childlinks.push_back(&LF_KFE);
   LF_thigh_fixed_LF_KFE.childjoints.push_back(&LF_KFE_rev);
   LF_thigh_fixed_LF_KFE.origin.rpy << 0, 0, 1.57079632679;
-  LF_thigh_fixed_LF_KFE.origin.xyz << 0.0 0.1003 -0.285;
+  LF_thigh_fixed_LF_KFE.origin.xyz << 0.0, 0.1003, -0.285;
 
   //Link LF_KFE;
   LF_KFE.parentJoint = &LF_thigh_fixed_LF_KFE;
@@ -488,7 +479,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint LF_KFE_rev;
   LF_KFE_rev.jointID = 8;
-  LF_KFE_rev.isrev = true
+  LF_KFE_rev.isrev = true;
   LF_KFE_rev.axis = 1;
   LF_KFE_rev.angle = gc[9]; //TODO
   LF_KFE_rev.parentJoint = &LF_thigh_fixed_LF_KFE;
@@ -526,10 +517,6 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 //END OF LF
 
 //RF
-  Joint base_RF_HAA, RF_HAA_rev, RF_HIP_RF_hip_fixed, RF_hip_fixed_RF_HFE, RF_HFE_rev, RF_THIGH_RF_thigh_fixed, 
-        RF_thigh_fixed_RF_KFE, RF_KFE_rev, RF_shank_RF_shank_fixed, RF_shank_fixed_RF_FOOT;
-  Link RF_HAA, RF_HIP, RF_hip_fixed, RF_HFE, RF_THIGH, RF_thigh_fixed, RF_KFE, RF_SHANK, RF_shank_fixed, RF_FOOT;
-  
   //Joint base_RF_HAA;
   base_RF_HAA.parentJoint = &base;
   base_RF_HAA.childlinks.push_back(&RF_HAA);
@@ -584,7 +571,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint RF_HFE_rev;
   RF_HFE_rev.jointID = 10;
-  RF_HFE_rev.isrev = true
+  RF_HFE_rev.isrev = true;
   RF_HFE_rev.axis = -1;
   RF_HFE_rev.angle = gc[11]; //TOOD
   RF_HFE_rev.parentJoint = &RF_hip_fixed_RF_HFE;
@@ -623,7 +610,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint RF_KFE_rev;
   RF_KFE_rev.jointID = 11;
-  RF_KFE_rev.isrev = true
+  RF_KFE_rev.isrev = true;
   RF_KFE_rev.axis = -1;
   RF_KFE_rev.angle = gc[12]; //TOOD
   RF_KFE_rev.parentJoint = &RF_thigh_fixed_RF_KFE;
@@ -661,10 +648,6 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 //END OF RF
 
 //LH
-  Joint base_LH_HAA, LH_HAA_rev, LH_HIP_LH_hip_fixed, LH_hip_fixed_LH_HFE, LH_HFE_rev, LH_THIGH_LH_thigh_fixed, 
-        LH_thigh_fixed_LH_KFE, LH_KFE_rev, LH_shank_LH_shank_fixed, LH_shank_fixed_LH_FOOT;
-  Link LH_HAA, LH_HIP, LH_hip_fixed, LH_HFE, LH_THIGH, LH_thigh_fixed, LH_KFE, LH_SHANK, LH_shank_fixed, LH_FOOT;
-
   //Joint base_LH_HAA;
   base_LH_HAA.parentJoint = &base;
   base_LH_HAA.childlinks.push_back(&LH_HAA);
@@ -719,7 +702,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint LH_HFE_rev;
   LH_HFE_rev.jointID = 13;
-  LH_HFE_rev.isrev = true
+  LH_HFE_rev.isrev = true;
   LH_HFE_rev.axis = 1;
   LH_HFE_rev.angle = gc[14]; //TOOD
   LH_HFE_rev.parentJoint = &LH_hip_fixed_LH_HFE;
@@ -758,7 +741,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint LH_KFE_rev;
   LH_KFE_rev.jointID = 14;
-  LH_KFE_rev.isrev = true
+  LH_KFE_rev.isrev = true;
   LH_KFE_rev.axis = 1;
   LH_KFE_rev.angle = gc[15]; //TOOD
   LH_KFE_rev.parentJoint = &LH_thigh_fixed_LH_KFE;
@@ -796,10 +779,6 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 //END OF LH
 
 //RH
-  Joint base_RH_HAA, RH_HAA_rev, RH_HIP_RH_hip_fixed, RH_hip_fixed_RH_HFE, RH_HFE_rev, RH_THIGH_RH_thigh_fixed, 
-        RH_thigh_fixed_RH_KFE, RH_KFE_rev, RH_shank_RH_shank_fixed, RH_shank_fixed_RH_FOOT;
-  Link RH_HAA, RH_HIP, RH_hip_fixed, RH_HFE, RH_THIGH, RH_thigh_fixed, RH_KFE, RH_SHANK, RH_shank_fixed, RH_FOOT;
-
   //Joint base_RH_HAA;
   base_RH_HAA.parentJoint = &base;
   base_RH_HAA.childlinks.push_back(&RH_HAA);
@@ -854,7 +833,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint RH_HFE_rev;
   RH_HFE_rev.jointID = 16;
-  RH_HFE_rev.isrev = true
+  RH_HFE_rev.isrev = true;
   RH_HFE_rev.axis = -1;
   RH_HFE_rev.angle = gc[17]; //TOOD
   RH_HFE_rev.parentJoint = &RH_hip_fixed_RH_HFE;
@@ -893,7 +872,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   //Joint RH_KFE_rev;
   RH_KFE_rev.jointID = 17;
-  RH_KFE_rev.isrev = true
+  RH_KFE_rev.isrev = true;
   RH_KFE_rev.axis = -1;
   RH_KFE_rev.angle = gc[18]; //TOOD
   RH_KFE_rev.parentJoint = &RH_thigh_fixed_RH_KFE;
@@ -930,7 +909,28 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   RH_FOOT.inertia_b = inertia_tensor(0.00317174097, 2.63048e-06, -6.815581e-05, 0.00317174092, -6.815583e-05, 8.319196e-05);
 //END OF RH
 
+//Start of code//
+  Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
+  Eigen::Matrix3d orientation = q.toRotationMatrix();
 
+  //set origin of base
+  base.w_pos = gc.head(3);
+  base.origin.xyz = gc.head(3);
+  base.origin.orien = orientation;
+  base.rotmat = true;
+
+  eliminate_fixed_joints(&base);
+  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
+  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(18, 18);
+  
+  CRBA(&base, rot, massMatrix);
+
+  //fill in lower triangle of the mass matrix
+  for (int i = 0; i < 18; i++) {
+    for (int j = 0; j < i; j++) {
+        massMatrix(i, j) = massMatrix(j, i);
+    }
+  }
 
   return massMatrix;
 }

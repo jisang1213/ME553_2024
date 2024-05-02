@@ -29,7 +29,12 @@ int main(int argc, char* argv[]) {
 
   std::cout<<"mass matrix should be \n"<< anymal->getMassMatrix().e()<<std::endl;
 
-  if((getMassMatrix(gc) - anymal->getMassMatrix().e()).norm() < 1e-8)
+  double error = (getMassMatrix(gc) - anymal->getMassMatrix().e()).norm();
+  std::cout<<"error is: \n"<< error <<std::endl;
+
+  std::cout<<"mass matrix is:  \n"<< getMassMatrix(gc) <<std::endl;
+
+  if(error < 1e-8)
     std::cout<<"passed "<<std::endl;
   else
     std::cout<<"failed "<<std::endl;  
