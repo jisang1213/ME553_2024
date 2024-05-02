@@ -29,10 +29,10 @@ int main(int argc, char* argv[]) {
 
   std::cout<<"mass matrix should be \n"<< anymal->getMassMatrix().e()<<std::endl;
 
-  double error = (getMassMatrix(gc) - anymal->getMassMatrix().e()).norm();
-  std::cout<<"error is: \n"<< error <<std::endl;
-
-  std::cout<<"mass matrix is:  \n"<< getMassMatrix(gc) <<std::endl;
+  Eigen::MatrixXd result = getMassMatrix(gc);
+  double error = (result - anymal->getMassMatrix().e()).norm();
+  std::cout << "  My result:  \n" << getMassMatrix(gc) <<std::endl;
+  std::cout << "error is: \n"<< error << std::endl;
 
   if(error < 1e-8)
     std::cout<<"passed "<<std::endl;

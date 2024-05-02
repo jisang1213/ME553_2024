@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ME553_2022_SOLUTIONS_TEST_HPP_
+#define ME553_2022_SOLUTIONS_TEST_HPP_
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -227,7 +228,7 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
     for(int i=0; i<6; i++){
       Eigen::VectorXd S = Eigen::VectorXd::Zero(6);
       S(i) = 1;
-      massmatrix(i, curjoint->jointID) = curjoint->S().transpose()*spatialInertial*IR*S;
+      massmatrix(i, curjoint->jointID) = S.transpose()*spatialInertial*IR*S;
     }
   }
   return composite;
@@ -274,7 +275,7 @@ void eliminate_fixed_joints(Joint* curjoint){
 }
 
 /// do not change the name of the method
-inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
+inline Eigen::Vector3d getEndEffectorPosition (const Eigen::VectorXd& gc){
 
 //URDF Parsing:
   Joint base, base_face_front, base_face_rear, base_to_docking_hatch_cover, base_to_lidar_cage, lidar_cage_to_lidar;
@@ -933,7 +934,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
   Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(18, 18);
   
-  CRBA(&base, rot, massMatrix);
+  rigidbody robot = CRBA(&base, rot, massMatrix);
 
   //fill in lower triangle of the mass matrix
   for (int i = 0; i < 18; i++) {
@@ -942,5 +943,7 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
     }
   }
 
-  return massMatrix;
+  return RH_thigh_fixed.COM;
 }
+
+#endif // ME553_2022_SOLUTIONS_TEST_HPP_
