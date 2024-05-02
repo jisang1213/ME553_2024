@@ -11,10 +11,10 @@ typedef struct{
 } Origin; //stores the origin from the URDF file
 
 typedef struct{
-  Eigen::Matrix3d inertia;
+  Eigen::Matrix3d I;
   Eigen::Vector3d COM;
-  double mass;
-} Composite; //composite body inertia, COM, and mass
+  double m;
+} rigidbody; //composite body inertia, COM, and mass
 
 class Joint{
   public:
@@ -68,6 +68,12 @@ class Joint{
     
       return Rz*Ry*Rx;
     }
+  //this function returns the 6D motion subspace vector of the joints
+  Eigen::VectorXd S(){
+    Eigen::VectorXd subspace(6);
+    subspace << Eigen::VectorXd::Zero(3), w_dir;
+    return subspace;
+  }
 };
 
 class Link{
@@ -79,6 +85,7 @@ class Link{
     bool rotmat = false;
     Eigen::Matrix3d inertia_b, inertia_w;
     Eigen::Vector3d COM; //com in world frame
+    double mass;
 
     Eigen::Matrix3d getRot(){
       return Rot();
@@ -118,6 +125,9 @@ class Link{
     
       return Rz*Ry*Rx;
     }
+    rigidbody RB(){
+      return rigidbody{inertia_w, COM, mass};
+    }
 };
 
 Eigen::Matrix3d inertia_tensor(double ixx, double ixy, double ixz, double iyy, double iyz, double izz){
@@ -132,16 +142,15 @@ Eigen::Vector3d newCOM(double m1, Eigen::Vector3d r1, double m2, Eigen::Vector3d
   return (m1*r1 + m2*r2)/(m1+m2);
 }
 
-Composite combinedInertia(double m1, Eigen::Matrix3d I1, Eigen::Vector3d r1, double m2, Eigen::Matrix3d I2, Eigen::Vector3d r2){
-  Eigen::Vector3d COM = newCOM(m1,r1,m2,r2);
-  Eigen::Vector3d R1 = r1 - COM;
-  Eigen::Vector3d R2 = r2 - COM;
-  Eigen::Matrix3d combined_inertia = I1 + I2 - m1*R1.skew()*R1.skew() - m2*R2.skew()*R2.skew();
-  Composite composite = {combined_inertia, COM, m1+m2}
-  return composite
+rigidbody joinbodies(rigidbody B1, rigidbody B2){
+  Eigen::Vector3d COM = newCOM(B1.m, B1.COM, B2.m, B2.COM);
+  Eigen::Vector3d R1 = B1.COM - COM;
+  Eigen::Vector3d R2 = B2.COM - COM;
+  Eigen::Matrix3d combined_inertia = (B1.I + B2.I) - (B1.m * R1.skew()*R1.skew()) - (B2.m * R2.skew()*R2.skew());
+  return rigidbody{combined_inertia, COM, B1.m + B2.m};
 }
 
-CB CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix){
+rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix){
   //down path
   rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
 
@@ -149,7 +158,7 @@ CB CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix){
   //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the Link class
   for(Link* childlink : curjoint->childlinks){
     Eigen::Matrix3d R = rot*childlink.getRot(); //get the orientaion of the child links relative to the world frame
-    childlink->inertia_w = R.transpose()*(childlink->inertia_b)*R; //find inertia in world frame for each link
+    childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
     childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
   }
 
@@ -164,30 +173,52 @@ CB CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix){
     }
   }
 
-  //Recursive call for each child joint
-  for(Joint* childjoint : curjoint->childjoints){
-    Composite CB = CRBA(childjoint, rot, massmatrix);
-    CB = ;
+  //recursively call CRBA for each child joint and also create new a composite body by combining the
+  //links of the current joint and the composite bodies of all child joints
+  rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0}
+  for (Joint* childjoint : curjoint->childjoints) {
+    rigidbody jointRB = CRBA(childjoint, rot, massmatrix);    //CRBA() called here
+    composite = joinbodies(composite, jointRB);
+  }
+  for(Link* childlink : curjoint->childlinks){
+    composite = joinbodies(composite, childlink.RB());
   }
 
   //up path
+  Eigen::MatrixXd spatialInertial(6, 6);
+  Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
+  spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
+  spatialInertial.block(0, 3, 3, 3) = -composite.m * r_ac.skew();
+  spatialInertial.block(3, 0, 3, 3) = composite.m * r_ac.skew();
+  spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * r_ac.skew() * r_ac.skew());
+
+  //DOUBLE CHECK IF WE CAN MOVE THIS^ HERE INSTEAD OF IN ELSE STATEMENT
+
+
   if(curjoint->isBase){
     //put the spatial inertial matrix in the top lefthand corner of the mass matrix
-    Eigen::Matrix<double, 6, 6> spatialInertial;
-    //fill in spatial inertial matrix here
+    //use composite to fill in spatial inertial matrix here
+
 
     massmatrix.block<6, 6>(0, 0) = spatialInertial;
   }
+  else{
+    //compute and fill Mi,j for all i<=j
+    Joint* joint_i = curjoint;    //curjoint is joint j
 
-  //joint j is given by the current joint , iterate over joint i (i>=j in tree)
+    while(!joint_i->isBase){
 
-  //Find total inertia of links
-  Eigen::Matrix3d links_composite_inertia = Eigen::Matrix3d::Zero();
+      Eigen::MatrixXd IR = Eigen::MatrixXd::Identity(6, 6);
+      Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
+      IR.block(0, 3, 3, 3) = rji.skew();
 
-  for(Link* childlink : curjoint->childlinks){
-    combinedInertia()
+      double Mij = curjoint.S().transpose()*spatialInertial*IR*joint_i.S();
+      massmatrix(joint_i->jointID, curjoint->jointID) = Mij;
+
+      joint_i = joint_i->parentJoint;
+    }
   }
-
+  return composite;
 }
 
 //function to eliminate all fixed joints
@@ -205,6 +236,10 @@ Joint* eliminate_fixed_joints(Joint* curjoint){
   //transform position of child links and joints from j' to j frame
   //also update their parent child relationship
   if(!curjoint->isrev){
+    //remove curjoint from parentJoint->childjoints
+    Joint* parent = curjoint->parentJoint;
+    parent->childjoints.erase(std::remove(parent->childjoints.begin(), parent->childjoints.end(), curjoint), parent->childjoints.end());
+    
     //move all child joints
     for(Joint* childjoint : curjoint->childjoints){
       //find position and orientation of child joint in parent frame
@@ -212,11 +247,8 @@ Joint* eliminate_fixed_joints(Joint* curjoint){
       childjoint->origin.orien = curjoint->getRot()*childjoint->getRot();
       childjoint->rotmat=true;
 
-      Joint* parent = curjoint->parentJoint;
       childjoint->parentJoint = parent;
       parent->childjoints.push_back(childjoint);
-      //remove curjoint from parentJoint.childjoints
-      parent->childjoints.erase(std::remove(parent->childjoints.begin(), parent->childjoints.end(), curjoint), parent->childjoints.end());
     }
     //move all child links
     for(Link* childlink : curjoint->childlinks){
@@ -225,8 +257,8 @@ Joint* eliminate_fixed_joints(Joint* curjoint){
       childlink->origin.orien = curjoint->getRot()*childlink->getRot();
       childlink->rotmat=true;
 
-      childlink->parentJoint = curjoint->parentJoint;
-      curjoint->parentJoint->childlinks.push_back(childlink);
+      childlink->parentJoint = parent;
+      parent->childlinks.push_back(childlink);
     }
   }
 
@@ -248,11 +280,17 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
   Joint* newbase_ptr = eliminate_fixed_joints(&base);
 
-  Eigen::MatrixXd massmatrix = Eigen::MatrixXd::Ones(18, 18);
+  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zeros(18, 18);
   Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
 
-  CRBA(newbase_ptr, rot, massmatrix);
+  CRBA(newbase_ptr, rot, massMatrix);
 
+  //fill in lower triangle of the mass matrix
+  for (int i = 0; i < 18; i++) {
+    for (int j = 0; j < i; j++) {
+        massMatrix(i, j) = massMatrix(j, i);
+    }
+  }
 ////////////
 
   //URDF Parsing:
@@ -357,17 +395,20 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
         LF_thigh_fixed_LF_KFE, LF_KFE_rev, LF_shank_LF_shank_fixed, LF_shank_fixed_LF_FOOT;
   Link LF_HAA, LF_HIP, LF_hip_fixed, LF_HFE, LF_THIGH, LF_thigh_fixed, LF_KFE, LF_SHANK, LF_shank_fixed, LF_FOOT;
 
+  //Joint base_LF_HAA;
   base_LF_HAA.parentJoint = &base;
   base_LF_HAA.childlinks.push_back(&LF_HAA);
   base_LF_HAA.childjoints.push_back(&LF_HAA_rev);
   base_LF_HAA.origin.rpy << 2.61799387799, 0.0, 0.0;
   base_LF_HAA.origin.xyz << 0.2999, 0.104, 0.0;
 
+  //Link LF_HAA;
   LF_HAA.parentJoint = &base_LF_HAA;
   LF_HAA.origin.xyz << -0.063, 7e-05, 0.00046;
   LF_HAA.mass = 2.04;
   LF_HAA.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
+  //Joint LF_HAA_rev;
   LF_HAA_rev.jointID = 6;
   LF_HAA_rev.isrev = true;
   LF_HAA_rev.axis = 1;
@@ -376,31 +417,37 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_HAA_rev.childlinks.push_back(&LF_HIP);
   LF_HAA_rev.childjoints.push_back(&LF_HIP_LF_hip_fixed);
 
+  //Link LF_HIP;
   LF_HIP.parentJoint = &LF_HAA_rev;
   LF_HIP.mass = 0.001;
   LF_HIP.inertia_b = inertia_tensor(0.000001, 0.0, 0.0, 0.000001, 0.0, 0.000001);
 
+  //Joint LF_HIP_LF_hip_fixed;
   LF_HIP_LF_hip_fixed.parentJoint = &LF_HAA_rev;
   LF_HIP_LF_hip_fixed.childlinks.push_back(&LF_hip_fixed);
   LF_HIP_LF_hip_fixed.childjoints.push_back(&LF_hip_fixed_LF_HFE);
   LF_HIP_LF_hip_fixed.origin.rpy << -2.61799387799, 0.0, 0.0;
 
+  //Link LF_hip_fixed;
   LF_hip_fixed.parentJoint = &LF_HIP_LF_hip_fixed;
   LF_hip_fixed.origin.xyz << 0.048, 0.008, -0.003;
   LF_hip_fixed.mass = 0.74;
   LF_hip_fixed.inertia_b = inertia_tensor(0.001393106, 8.4012e-05, 2.3378e-05, 0.003798579, 7.1319e-05, 0.003897509);
 
+  //Joint LF_hip_fixed_LF_HFE;
   LF_hip_fixed_LF_HFE.parentJoint = &LF_HIP_LF_hip_fixed;
   LF_hip_fixed_LF_HFE.childlinks.push_back(&LF_HFE);
   LF_hip_fixed_LF_HFE.childjoints.push_back(&LF_HFE_rev);
   LF_hip_fixed_LF_HFE.origin.rpy << 0, 0, 1.57079632679;
   LF_hip_fixed_LF_HFE.origin.xyz << 0.0599, 0.08381, 0.0;
 
+  //Link LF_HFE;
   LF_HFE.parentJoint = &LF_hip_fixed_LF_HFE;
   LF_HFE.origin.xyz << -0.063, 7e-05, 0.00046;
   LF_HFE.mass = 2.04;
   LF_HFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
+  //Joint LF_HFE_rev;
   LF_HFE_rev.jointID = 7;
   LF_HFE_rev.isrev = true
   LF_HFE_rev.axis = 1;
@@ -409,31 +456,37 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_HFE_rev.childlinks.push_back(&LF_THIGH);
   LF_HFE_rev.childjoints.push_back(&LF_THIGH_LF_thigh_fixed);
 
+  //Link LF_THIGH;
   LF_THIGH.parentJoint = &LF_HFE_rev;
   LF_THIGH.mass = 0.001;
   LF_THIGH.inertia_b = inertia_tensor(0.000001, 0.0, 0.0, 0.000001, 0.0, 0.000001);
 
+  //Joint LF_THIGH_LF_thigh_fixed;
   LF_THIGH_LF_thigh_fixed.parentJoint = &LF_HFE_rev;
   LF_THIGH_LF_thigh_fixed.childlinks.push_back(&LF_thigh_fixed);
   LF_THIGH_LF_thigh_fixed.childjoints.push_back(&LF_thigh_fixed_LF_KFE);
   LF_THIGH_LF_thigh_fixed.origin.rpy << 0, 0, -1.57079632679;
 
+  //Link LF_thigh_fixed;
   LF_thigh_fixed.parentJoint = &LF_THIGH_LF_thigh_fixed;
   LF_thigh_fixed.origin.xyz << 0.0 0.018 -0.169;
   LF_thigh_fixed.mass = 1.03;
   LF_thigh_fixed.inertia_b = inertia_tensor(0.018644469, 5.2e-08, 1.0157e-05, 0.019312599, 0.002520077, 0.002838361);
 
+  //Joint LF_thigh_fixed_LF_KFE;
   LF_thigh_fixed_LF_KFE.parentJoint = &LF_THIGH_LF_thigh_fixed;
   LF_thigh_fixed_LF_KFE.childlinks.push_back(&LF_KFE);
   LF_thigh_fixed_LF_KFE.childjoints.push_back(&LF_KFE_rev);
   LF_thigh_fixed_LF_KFE.origin.rpy << 0, 0, 1.57079632679;
   LF_thigh_fixed_LF_KFE.origin.xyz << 0.0 0.1003 -0.285;
 
+  //Link LF_KFE;
   LF_KFE.parentJoint = &LF_thigh_fixed_LF_KFE;
   LF_KFE.origin.xyz << -0.063, 7e-05, 0.00046;
   LF_KFE.mass = 2.04;
   LF_KFE.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
+  //Joint LF_KFE_rev;
   LF_KFE_rev.jointID = 8;
   LF_KFE_rev.isrev = true
   LF_KFE_rev.axis = 1;
@@ -442,24 +495,29 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   LF_KFE_rev.childlinks.push_back(&LF_SHANK);
   LF_KFE_rev.childjoints.push_back(&LF_shank_LF_shank_fixed);
 
+  //Link LF_SHANK;
   LF_SHANK.parentJoint = &LF_KFE_rev;
   LF_SHANK.mass = 0.001;
   LF_SHANK.inertia_b = inertia_tensor(0.000001, 0.0, 0.0, 0.000001, 0.0, 0.000001);
 
+  //Joint LF_shank_LF_shank_fixed;
   LF_shank_LF_shank_fixed.parentJoint = &LF_KFE_rev;
   LF_shank_LF_shank_fixed.childlinks.push_back(&LF_shank_fixed);
   LF_shank_LF_shank_fixed.childjoints.push_back(&LF_shank_fixed_LF_FOOT);
   LF_shank_LF_shank_fixed.origin.rpy << 0, 0, -1.57079632679;
 
+  //Link LF_shank_fixed;
   LF_shank_fixed.parentJoint = &LF_shank_LF_shank_fixed;
   LF_shank_fixed.origin.xyz << 0.03463, 0.00688, 0.00098;
   LF_shank_fixed.mass = 0.33742;
   LF_shank_fixed.inertia_b = inertia_tensor(0.00032748005, 2.142561e-05, 1.33942e-05, 0.00110974122, 7.601e-08, 0.00089388521);
 
+  //Joint LF_shank_fixed_LF_FOOT;
   LF_shank_fixed_LF_FOOT.parentJoint = &LF_shank_LF_shank_fixed;
   LF_shank_fixed_LF_FOOT.childlinks.push_back(&LF_FOOT);
   LF_shank_fixed_LF_FOOT.origin.xyz << 0.08795, 0.01305, -0.33797;
 
+  //Link LF_FOOT;
   LF_FOOT.isleaf = true;
   LF_FOOT.parentJoint = &LF_shank_fixed_LF_FOOT;
   LF_FOOT.origin.xyz << 0.00948, -0.00948, 0.1468;
@@ -874,5 +932,5 @@ inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
 
 
 
-  return massmatrix;
+  return massMatrix;
 }
