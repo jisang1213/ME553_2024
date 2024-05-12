@@ -26,7 +26,7 @@ class Joint{
     Eigen::Vector3d w_dir;   //axis direction vector in world frame
     Eigen::Vector3d w_pos;  //position of joint in world frame
     Eigen::Vector3d w_ang_vel;
-    Eigen::VectorXd wrench(6);
+    Eigen::VectorXd wrench;
     Joint *parentJoint = NULL;
     std::vector<Joint*> childjoints;
     std::vector<Link*> childlinks;
@@ -63,6 +63,7 @@ class Joint{
       w_dir.setZero();
       w_pos.setZero();
       w_ang_vel.setZero();
+      wrench.resize(6);
       wrench.setZero();
     }
 
@@ -942,6 +943,7 @@ inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen
   Eigen::Matrix3d orientation = q.toRotationMatrix();
 
   //set base properties
+  base.accel.lin << 0, 0, 9.81;
   base.w_ang_vel = gv.segment(3,3);
   base.origin.orien = orientation;
   base.rotmat = true;

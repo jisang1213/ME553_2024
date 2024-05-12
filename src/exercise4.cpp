@@ -3,7 +3,7 @@
 //
 
 #include "raisim/RaisimServer.hpp"
-#include "exercise4_STUDENTID.hpp"
+#include "exercise4_20190837.hpp"
 
 #define _MAKE_STR(x) __MAKE_STR(x)
 #define __MAKE_STR(x) #x
@@ -28,6 +28,7 @@ int main(int argc, char* argv[]) {
   anymal->getMassMatrix();
 
   std::cout<<"nonlinearities should be \n"<< anymal->getNonlinearities({0,0,-9.81}).e().transpose()<<std::endl;
+  std::cout<<"nonlinearities are \n"<< getNonlinearities(gc, gv).transpose()<<std::endl;
 
   if((getNonlinearities(gc, gv) - anymal->getNonlinearities({0,0,-9.81}).e()).norm() < 1e-8)
     std::cout<<"passed "<<std::endl;
