@@ -940,7 +940,7 @@ inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen
 
 //Start of code//
   Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
-  Eigen::Matrix3d orientation = q.toRotationMatrix();
+  Eigen::Matrix3d orientation = q.normalized().toRotationMatrix();
 
   //set base properties
   base.accel.lin << 0, 0, 9.81;
