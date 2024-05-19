@@ -5,9 +5,6 @@
 #include <vector>
 #include <iostream>
 
-class Joint;
-class Link;
-
 typedef struct{
   Eigen::Matrix3d orien;
   Eigen::Vector3d xyz;
@@ -20,20 +17,18 @@ typedef struct{
   double m;
 } rigidbody; //composite body inertia, COM, and mass
 
+class Link;
 class Joint{
   public:
     Origin origin;
     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
     Eigen::Vector3d w_pos;  //position of joint in world frame
     Eigen::Vector3d w_lin_vel, w_ang_vel;
-    Eigen::VectorXd wrench;
-    Joint *parentJoint = NULL;
     std::vector<Joint*> childjoints;
     std::vector<Link*> childlinks;
     double axis, angle;
     bool isrev = false;
     bool isBase = false;
-    bool rotmat = false; //toggle true if origin.orien is assigned
     int jointID = -1;
 
     struct acceleration{
@@ -55,6 +50,10 @@ class Joint{
     //this method returns the rotation matrix of the current joint
     Eigen::Matrix3d getRot(){
       return Rot();
+    }
+    void setRot(Eigen::Matrix3d rot){
+      origin.orien = rot;
+      userotmat = true;
     }
     //this method returns the 6D motion subspace vector of the joint
     Eigen::VectorXd S(){
@@ -90,7 +89,7 @@ class Joint{
     Eigen::Matrix3d Rot(){
       Eigen::Matrix3d Rx, Ry, Rz;
       double roll, pitch, yaw;
-      if(rotmat){
+      if(userotmat){
         return origin.orien;
       }
       if(isrev){
@@ -111,6 +110,7 @@ class Joint{
     
       return Rz*Ry*Rx;
     }
+    bool userotmat = false; //toggle true if origin.orien is assigned
 };
 
 class Link{
@@ -118,7 +118,6 @@ class Link{
     Origin origin;
     Joint *parentJoint = NULL;
     bool isleaf = false;
-    bool rotmat = false;
     Eigen::Matrix3d inertia_b, inertia_w;
     Eigen::Vector3d COM; //com in world frame
     double mass;
@@ -126,7 +125,10 @@ class Link{
     Eigen::Matrix3d getRot(){
       return Rot();
     }
-
+    void setRot(Eigen::Matrix3d rot){
+      origin.orien = rot;
+      userotmat = true;
+    }
     rigidbody RB(){
       return rigidbody{inertia_w, COM, mass};
     }
@@ -144,7 +146,7 @@ class Link{
     Eigen::Matrix3d Rot(){
       Eigen::Matrix3d Rx, Ry, Rz;
       double roll, pitch, yaw;
-      if(rotmat){
+      if(userotmat){
         return origin.orien;
       }
       else{
@@ -162,6 +164,7 @@ class Link{
     
       return Rz*Ry*Rx;
     }
+    bool userotmat = false;
 };
 
 Eigen::Matrix3d skew(Eigen::Vector3d vec){
@@ -192,6 +195,12 @@ rigidbody joinbodies(rigidbody B1, rigidbody B2){
   return rigidbody{combined_inertia, COM, B1.m + B2.m};
 }
 
+Eigen::MatrixXd getX(Eigen::Vector3d r){
+    Eigen::MatrixXd Xbp = Eigen::MatrixXd::Identity(6, 6);
+    Xbp.bottomLeftCorner(3,3) = skew(r);
+    return Xbp
+}
+
 //function to eliminate all fixed joints
 void eliminate_fixed_joints(Joint* curjoint){
   //down path
@@ -213,8 +222,7 @@ void eliminate_fixed_joints(Joint* curjoint){
     for(Joint* childjoint : curjoint->childjoints){
       //find position and orientation of child joint in parent frame
       childjoint->origin.xyz = curjoint->origin.xyz + curjoint->getRot()*childjoint->origin.xyz;
-      childjoint->origin.orien = curjoint->getRot()*childjoint->getRot();
-      childjoint->rotmat=true;
+      childjoint->setRot(curjoint->getRot()*childjoint->getRot());
 
       childjoint->parentJoint = parent;
       parent->childjoints.push_back(childjoint);
@@ -223,8 +231,7 @@ void eliminate_fixed_joints(Joint* curjoint){
     for(Link* childlink : curjoint->childlinks){
       //find position and orientation of childlink in parent frame
       childlink->origin.xyz = curjoint->origin.xyz + curjoint->getRot()*childlink->origin.xyz;
-      childlink->origin.orien = curjoint->getRot()*childlink->getRot();
-      childlink->rotmat=true;
+      childlink->setRot(curjoint->getRot()*childlink->getRot());
 
       childlink->parentJoint = parent;
       parent->childlinks.push_back(childlink);
@@ -286,19 +293,10 @@ Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::Vec
 
   //Compute articulated body inertia and bias for current joint
   for (Joint* childjoint : curjoint->childjoints) {
-    //compute matrix Xbp that moves wrench at child joint to wrench at parent joint
-    Eigen::MatrixXd Xbp(6, 6);
+    //compute matrix Xbp and Xbp_dot
     Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
-    Xbp.block(0, 0, 3, 3) = Eigen::Matrix3d::Identity();
-    Xbp.block(0, 3, 3, 3) = Eigen::Matrix3d::Zero();
-    Xbp.block(3, 0, 3, 3) = skew(r_pb);
-    Xbp.block(3, 3, 3, 3) = Eigen::Matrix3d::Identity();
-
-    Eigen::MatrixXd Xbp_dot(6, 6);
-    Xbp_dot.block(0, 0, 3, 3) = Eigen::Matrix3d::Identity();
-    Xbp_dot.block(0, 3, 3, 3) = Eigen::Matrix3d::Zero();
-    Xbp_dot.block(3, 0, 3, 3) = skew(curjoint->w_ang_vel.cross(r_pb));
-    Xbp_dot.block(3, 3, 3, 3) = Eigen::Matrix3d::Identity();
+    Eigen::MatrixXd Xbp = getX(r_pb);
+    Eigen::MatrixXd Xbp_dot = getX(curjoint->w_ang_vel.cross(r_pb));
     
     ///RECURSION CALLED HERE///
     Joint::Inertial_body childAB = ABA1(childjoint, rot, gv, tau);
@@ -312,7 +310,7 @@ Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::Vec
     Eigen::VectorXd ST = S.transpose();
     Eigen::VectorXd Sdot = childjoint->Sdot();
     Eigen::VectorXd W = curjoint->getTwist();
-    int j = childjoint->jointID;
+    size_t j = childjoint->jointID;
 
     curjoint->AB.M += Xbp * M * (-S*(ST*M*S).inverse()*(ST*M*XbpT) + XbpT);
     curjoint->AB.b += Xbp * (M*(S*(ST*M*S).inverse()*(tau(j) - ST*M*(Sdot*gv(j) + Xbp_dotT*W) - ST*b) + Sdot*gv(j) + Xbp_dotT*W) + b);
@@ -333,21 +331,12 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &tau, Eigen::VectorXd& udot){
 
   for (Joint* childjoint : curjoint->childjoints) {
 
+    //compute matrix Xbp and Xbp_dot
     Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
-    
-    //compute matrix Xbp that moves wrench at child joint to wrench at parent joint
-    Eigen::MatrixXd Xbp(6, 6);
-    Xbp.block(0, 0, 3, 3) = Eigen::Matrix3d::Identity();
-    Xbp.block(0, 3, 3, 3) = Eigen::Matrix3d::Zero();
-    Xbp.block(3, 0, 3, 3) = skew(r_pb);
-    Xbp.block(3, 3, 3, 3) = Eigen::Matrix3d::Identity();
+    Eigen::MatrixXd Xbp = getX(r_pb);
+    Eigen::MatrixXd Xbp_dot = getX(curjoint->w_ang_vel.cross(r_pb));
 
-    Eigen::MatrixXd Xbp_dot(6, 6);
-    Xbp_dot.block(0, 0, 3, 3) = Eigen::Matrix3d::Identity();
-    Xbp_dot.block(0, 3, 3, 3) = Eigen::Matrix3d::Zero();
-    Xbp_dot.block(3, 0, 3, 3) = skew(curjoint->w_ang_vel.cross(r_pb));
-    Xbp_dot.block(3, 3, 3, 3) = Eigen::Matrix3d::Identity();
-
+    //Shortform symbols for terms of equation for udot
     Eigen::MatrixXd M = childjoint->AB.M;
     Eigen::VectorXd b = childjoint->AB.b;
     Eigen::MatrixXd XbpT = Xbp.transpose();
@@ -357,7 +346,7 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &tau, Eigen::VectorXd& udot){
     Eigen::VectorXd Sdot = childjoint->Sdot();
     Eigen::VectorXd W = curjoint->getTwist();
     Eigen::VectorXd Wdot = curjoint->accel.get6D();
-    int j = childjoint->jointID;
+    size_t j = childjoint->jointID;
 
     udot[j] = (ST*M*S).inverse() * (tau(j) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - S*b);   //CHECK
 
@@ -415,8 +404,7 @@ inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen
   base.accel.lin << 0, 0, 9.81;             ///////////Check this//////////
   base.w_lin_vel = gv.segment(0,3);
   base.w_ang_vel = gv.segment(3,3);
-  base.origin.orien = orientation;
-  base.rotmat = true;
+  base.setRot(orientation);
   base.isBase = true;
   base.isrev = true; //for simplication, set isrev to true since it is not fixed
 
@@ -1040,4 +1028,7 @@ inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen
 
   //ABA calls two recursive sub functions to traverse the tree twice and compute udot
   return ABA(&base, gv, gf);  //Change gf to argument name for generalized force
+
+  //should the z direction acceleration be shifted by 9.81?
+
 }
