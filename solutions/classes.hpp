@@ -45,24 +45,7 @@ class Kinematic_tree{
     bool userotmat = false; //toggle true if origin.orien is assigned
 };
 
-class Link : public Kinematic_tree{
-  public:
-    bool isleaf = false;
-    Eigen::Matrix3d inertia_b, inertia_w;
-    Eigen::Vector3d COM; //com in world frame
-    double mass;
-
-    rigidbody RB(){
-      return rigidbody{inertia_w, COM, mass};
-    }
-
-    Link(){
-      inertia_b.setZero();
-      inertia_w.setZero();
-      COM.setZero();
-    }
-};
-
+class Link;
 class Joint : public Kinematic_tree{
   public:
     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
@@ -115,5 +98,24 @@ class Joint : public Kinematic_tree{
       w_pos.setZero();
       w_lin_vel.setZero();
       w_ang_vel.setZero();
+    }
+};
+
+class Link : public Kinematic_tree{
+  public:
+    bool isleaf = false;
+    Joint *parentJoint = NULL;
+    Eigen::Matrix3d inertia_b, inertia_w;
+    Eigen::Vector3d COM; //com in world frame
+    double mass;
+
+    rigidbody RB(){
+      return rigidbody{inertia_w, COM, mass};
+    }
+
+    Link(){
+      inertia_b.setZero();
+      inertia_w.setZero();
+      COM.setZero();
     }
 };
