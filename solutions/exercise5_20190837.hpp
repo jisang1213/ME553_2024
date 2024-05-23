@@ -25,6 +25,7 @@ class Joint{
     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
     Eigen::Vector3d w_pos;  //position of joint in world frame
     Eigen::Vector3d w_lin_vel, w_ang_vel;
+    Joint *parentJoint = NULL;
     std::vector<Joint*> childjoints;
     std::vector<Link*> childlinks;
     double axis, angle;
@@ -199,7 +200,7 @@ rigidbody joinbodies(rigidbody B1, rigidbody B2){
 Eigen::MatrixXd getX(Eigen::Vector3d r){
     Eigen::MatrixXd Xbp = Eigen::MatrixXd::Identity(6, 6);
     Xbp.bottomLeftCorner(3,3) = skew(r);
-    return Xbp
+    return Xbp;
 }
 
 //function to eliminate all fixed joints
@@ -241,7 +242,7 @@ void eliminate_fixed_joints(Joint* curjoint){
 }
 
 //first part of ABA
-Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau){
+Joint::Inertial_body ABA1(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau, Eigen::Matrix3d rot){
   //down path (compute acceleration)
   rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
 
@@ -255,6 +256,8 @@ Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::Vec
     childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
     composite = joinbodies(composite, childlink->RB());
   }
+
+  std::cout << "checkpoint3" << std::endl;
 
   //Compute spatial inertia matrix about the current joint
   Eigen::MatrixXd spatialInertial(6, 6);
@@ -271,6 +274,8 @@ Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::Vec
   fictious_forces.tail(3) << skew(curjoint->w_ang_vel) * (composite.I - (composite.m * skew(r_ac) * skew(r_ac))) * curjoint->w_ang_vel;
   curjoint->RB.b = fictious_forces;
 
+  std::cout << "checkpoint4" << std::endl;
+  
   //For each revolute child joint, find the position, axis direction, and angular & linear velocity in the world frame
   //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
   for(Joint* childjoint : curjoint->childjoints){
@@ -287,6 +292,8 @@ Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::Vec
     //compute the angular acceleration of the child joint
     childjoint->accel.ang = curjoint->accel.ang + childjoint->w_dir_dot*gv(childjoint->jointID);
   }
+
+  std::cout << "checkpoint5" << std::endl;
   
   //initialize articulated body properties to rigid body properties
   curjoint->AB.M = curjoint->RB.M;
@@ -298,10 +305,9 @@ Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::Vec
     Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
     Eigen::MatrixXd Xbp = getX(r_pb);
     Eigen::MatrixXd Xbp_dot = getX(curjoint->w_ang_vel.cross(r_pb));
-    
-    ///RECURSION CALLED HERE///
-    Joint::Inertial_body childAB = ABA1(childjoint, rot, gv, tau);
 
+    ///RECURSION CALLED HERE///
+    Joint::Inertial_body childAB = ABA1(childjoint, gv, tau, rot);
     //Shortform symbols for terms of AB inertia formula
     Eigen::MatrixXd M = childAB.M;
     Eigen::VectorXd b = childAB.b;
@@ -313,15 +319,27 @@ Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::Vec
     Eigen::VectorXd W = curjoint->getTwist();
     size_t j = childjoint->jointID;
 
-    curjoint->AB.M += Xbp * M * (-S*(ST*M*S).inverse()*(ST*M*XbpT) + XbpT);
-    curjoint->AB.b += Xbp * (M*(S*(ST*M*S).inverse()*(tau(j) - ST*M*(Sdot*gv(j) + Xbp_dotT*W) - ST*b) + Sdot*gv(j) + Xbp_dotT*W) + b);
+    curjoint->AB.M += Xbp * M * (S*(-(ST*M*S).inverse()*(ST*M*XbpT) + XbpT));
+
+    std::cout << "here" << std::endl;
+
+    std::vector<int> vec_initialized(100, 42);
+    //Eigen::MatrixXd identity_matrix = Eigen::MatrixXd::Zero(2, 2);
+
+    std::cout << "matrix created" << std::endl;
+
+    Eigen::VectorXd temp = Xbp * (M*(S*(ST*M*S).inverse()*(tau.segment(j,1) - ST*M*(Sdot*gv.segment(j,1) + Xbp_dotT*W) - ST*b) + Sdot*gv.segment(j,1) + Xbp_dotT*W) + b);
+
+    std::cout << "Fixed. Size:  " << temp.size() <<std::endl;
+    
+    curjoint->AB.b += Xbp * (M*(S*(ST*M*S).inverse()*(tau.segment(j,1) - ST*M*(Sdot*gv.segment(j,1) + Xbp_dotT*W) - ST*b) + Sdot*gv.segment(j,1) + Xbp_dotT*W) + b);
   }
-  
+
   return curjoint->AB;
 }
 
 //second part of ABA - only go down
-void ABA2(Joint* curjoint, const Eigen::VectorXd &tau, Eigen::VectorXd& udot){
+void ABA2(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau, Eigen::VectorXd& udot){
 
   //Recursively compute udot
   if(curjoint->isBase){
@@ -349,9 +367,9 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &tau, Eigen::VectorXd& udot){
     Eigen::VectorXd Wdot = curjoint->accel.get6D();
     size_t j = childjoint->jointID;
 
-    udot[j] = (ST*M*S).inverse() * (tau(j) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - S*b);   //CHECK
+    udot[j] = ((ST*M*S).inverse() * (tau.segment(j,1) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - ST*b)).value();   //CHECK
 
-    ABA2(childjoint, tau, udot);
+    ABA2(childjoint, gv, tau, udot);
   }
 }
 
@@ -359,12 +377,12 @@ Eigen::VectorXd ABA(Joint* base, const Eigen::VectorXd &gv, const Eigen::VectorX
     //compute kinematics and dynamics down the tree needed to complete NE of each body except the force
     //Compute M^A and b^A up the tree
     Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
-    ABA1(&base, rot, gv, tau);
+    std::cout << "checkpoint2" << std::endl;
+    ABA1(base, gv, tau, rot);
 
     //from the root to the leaves, compute udot and w
     Eigen::VectorXd udot = Eigen::VectorXd::Zero(18);
-    ABA2(&base, tau, udot);
-
+    ABA2(base, gv, tau, udot);
     return udot;
 }
 
@@ -404,7 +422,7 @@ inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc
   Eigen::Matrix3d orientation = q.toRotationMatrix();
 
   //set base properties
-  base.accel.lin << 0, 0, 9.81;             ///////////Check this//////////
+  base.accel.lin << 0, 0, 9.81;             ///////////Check this///////////
   base.w_lin_vel = gv.segment(0,3);
   base.w_ang_vel = gv.segment(3,3);
   base.setRot(orientation);
@@ -1029,8 +1047,13 @@ inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc
   /////// Start of actual code ///////
   eliminate_fixed_joints(&base);
 
+  std::cout << "checkpoint1" << std::endl;
+
   //ABA calls two recursive sub functions to traverse the tree twice and compute udot
-  return ABA(&base, gv, gf);  //Change gf to argument name for generalized force
+  Eigen::VectorXd result = ABA(&base, gv, gf);  //Change gf to argument name for generalized force
 
   //should the z direction acceleration be shifted by 9.81?
+  result[2] -= 9.81;
+
+  return result;
 }
