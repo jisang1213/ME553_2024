@@ -32,10 +32,13 @@ int main(int argc, char* argv[]) {
   massMatrix = anymal->getMassMatrix().e();
   nonlinearity = anymal->getNonlinearities({0,0,-9.81}).e();
 
-  if((computeGeneralizedAcceleration(gc, gv, gf) - massMatrix.inverse() * (gf-nonlinearity)).norm() < 1e-8)
+  Eigen::VectorXd accel = computeGeneralizedAcceleration(gc, gv, gf);
+
+  if((accel - massMatrix.inverse() * (gf-nonlinearity)).norm() < 1e-8)
     std::cout<<"passed "<<std::endl;
   else
     std::cout<<"failed. The acceleration should be "<< (massMatrix.inverse() * (gf-nonlinearity)).transpose() <<std::endl;
+    std::cout<<"The acceleration is "<< accel.transpose() <<std::endl;
 
   return 0;
 }
