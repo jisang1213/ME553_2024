@@ -3,6 +3,7 @@ class Kinematic_tree{
     Origin origin;
     bool isrev = false;
     double axis, angle;
+    Joint *parentJoint = NULL;
     //this method returns the rotation matrix of the current joint
     Eigen::Matrix3d getRot(){
       return Rot();
@@ -51,21 +52,11 @@ class Joint : public Kinematic_tree{
     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
     Eigen::Vector3d w_pos;  //position of joint in world frame
     Eigen::Vector3d w_lin_vel, w_ang_vel;
+    Eigen::VectorXd accel;
     std::vector<Joint*> childjoints;
     std::vector<Link*> childlinks;
     bool isBase = false;
     int jointID = -1;
-
-    struct acceleration{
-      Eigen::Vector3d lin = Eigen::Vector3d::Zero();
-      Eigen::Vector3d ang = Eigen::Vector3d::Zero();
-      Eigen::VectorXd get6D(){
-        Eigen::VectorXd concat(6);
-        concat << lin, ang;
-        return concat;
-      }
-    } accel; //linear and angular force and acceleration
-    //consider putting twist here too
 
     struct Inertial_body{
         Eigen::MatrixXd M = Eigen::MatrixXd::Zero(6,6);
@@ -98,13 +89,14 @@ class Joint : public Kinematic_tree{
       w_pos.setZero();
       w_lin_vel.setZero();
       w_ang_vel.setZero();
+      accel.resize(6);
+      accel.setZero();
     }
 };
 
 class Link : public Kinematic_tree{
   public:
     bool isleaf = false;
-    Joint *parentJoint = NULL;
     Eigen::Matrix3d inertia_b, inertia_w;
     Eigen::Vector3d COM; //com in world frame
     double mass;
