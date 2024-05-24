@@ -196,6 +196,12 @@ Eigen::MatrixXd getX(Eigen::Vector3d r){
     return Xbp;
 }
 
+Eigen::MatrixXd getXdot(Eigen::Vector3d r){
+    Eigen::MatrixXd Xbp = Eigen::MatrixXd::Zero(6, 6);
+    Xbp.block(3,0,3,3) = skew(r);
+    return Xbp;
+}
+
 //function to eliminate all fixed joints
 void eliminate_fixed_joints(Joint* curjoint){
   //down path
@@ -237,7 +243,6 @@ void eliminate_fixed_joints(Joint* curjoint){
 void traverse_tree(Joint* curjoint){
   //down path
   std::cout<<"current joint ID is: " << curjoint->jointID<<std::endl;
-
   for(Joint* childjoint : curjoint->childjoints){
     traverse_tree(childjoint);
   }
@@ -290,15 +295,14 @@ Joint::Inertial_body ABA1(Joint* curjoint, const Eigen::VectorXd &gv, const Eige
   }
 
   //initialize articulated body properties to rigid body properties
-  curjoint->AB.M = curjoint->RB.M;
-  curjoint->AB.b = curjoint->RB.b;
+  curjoint->AB = curjoint->RB;
 
   //Compute articulated body inertia and bias for current joint
   for (Joint* childjoint : curjoint->childjoints) {
     //compute matrix Xbp and Xbp_dot
     Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
     Eigen::MatrixXd Xbp = getX(r_pb);
-    Eigen::MatrixXd Xbp_dot = getX(curjoint->w_ang_vel.cross(r_pb));
+    Eigen::MatrixXd Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
 
     ///RECURSION CALLED HERE///
     Joint::Inertial_body childAB = ABA1(childjoint, gv, tau, rot);
@@ -339,7 +343,7 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau
     //compute matrix Xbp and Xbp_dot
     Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
     Eigen::MatrixXd Xbp = getX(r_pb);
-    Eigen::MatrixXd Xbp_dot = getX(curjoint->w_ang_vel.cross(r_pb));
+    Eigen::MatrixXd Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
 
     //Shortform symbols for terms of equation for udot
     Eigen::MatrixXd M = childjoint->AB.M;
@@ -356,6 +360,18 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau
     udot[j] = ((ST*M*S).inverse() * (tau.segment(j,1) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - ST*b)).value();
 
     childjoint->accel = S*udot(j) + Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot;
+
+
+
+    //compute the linear acceleration of the child joint
+    childjoint->accel.lin = curjoint->accel.lin + skew(curjoint->accel.ang)*(childjoint->w_pos - curjoint->w_pos)
+                            + skew(curjoint->w_ang_vel)*skew(curjoint->w_ang_vel)*(childjoint->w_pos - curjoint->w_pos);
+    //derivative of axis vector (wxr):
+    Eigen::Vector3d w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
+    //compute the angular acceleration of the child joint
+    childjoint->accel.ang = curjoint->accel.ang + w_dir_dot*gv(childjoint->jointID);
+
+
 
     ABA2(childjoint, gv, tau, udot);
   }
