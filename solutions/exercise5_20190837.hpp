@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <vector>
@@ -18,153 +17,8 @@ typedef struct{
   double m;
 } rigidbody; //composite body inertia, COM, and mass
 
-// class Link;
-// class Joint{
-//   public:
-//     Origin origin;
-//     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
-//     Eigen::Vector3d w_pos;  //position of joint in world frame
-//     Eigen::Vector3d w_lin_vel, w_ang_vel;
-//     Eigen::VectorXd accel;
-//     Joint *parentJoint = NULL;
-//     std::vector<Joint*> childjoints;
-//     std::vector<Link*> childlinks;
-//     double axis, angle;
-//     bool isrev = false;
-//     bool isBase = false;
-//     int jointID = -1;
-
-//     struct Inertial_body{
-//         Eigen::MatrixXd M = Eigen::MatrixXd::Zero(6,6);
-//         Eigen::VectorXd b = Eigen::VectorXd::Zero(6);
-//     } RB, AB; //stores M and b for rigid body and articulated body
-
-//     //this method returns the rotation matrix of the current joint
-//     Eigen::Matrix3d getRot(){
-//       return Rot();
-//     }
-//     void setRot(Eigen::Matrix3d rot){
-//       origin.orien = rot;
-//       userotmat = true;
-//     }
-//     //this method returns the 6D motion subspace vector of the joint
-//     Eigen::VectorXd S(){
-//       Eigen::VectorXd subspace(6);
-//       subspace << Eigen::VectorXd::Zero(3), w_dir;
-//       return subspace;
-//     }
-//     //this method returns the time derivative of the 6D motion subspace vector of the joint
-//     Eigen::VectorXd Sdot(){
-//       Eigen::VectorXd sdot(6);
-//       sdot << Eigen::VectorXd::Zero(3), w_dir_dot;
-//       return sdot;
-//     }
-//     //this method returns the twist of the joint
-//     Eigen::VectorXd getTwist(){
-//       Eigen::VectorXd twist(6);
-//       twist << w_lin_vel, w_ang_vel;
-//       return twist;
-//     }
-
-//     Joint(){
-//       origin.rpy.setZero();
-//       origin.xyz.setZero();
-//       origin.orien.setZero();
-//       w_dir.setZero();
-//       w_dir_dot.setZero();
-//       w_pos.setZero();
-//       w_lin_vel.setZero();
-//       w_ang_vel.setZero();
-//       accel.resize(6);
-//       accel.setZero();
-//     }
-
-//   private:
-//     Eigen::Matrix3d Rot(){
-//       Eigen::Matrix3d Rx, Ry, Rz;
-//       double roll, pitch, yaw;
-
-//       if(userotmat){
-//         return origin.orien;
-//       }
-      
-//       if(isrev){
-//         roll=axis*angle; pitch=0.; yaw=0.;
-//       }
-//       else{
-//         roll=origin.rpy[0]; pitch=origin.rpy[1]; yaw=origin.rpy[2];
-//       }
-//       Rx << 1, 0, 0,
-//             0, cos(roll), -sin(roll),
-//             0, sin(roll), cos(roll);
-//       Ry << cos(pitch), 0, sin(pitch),
-//             0, 1, 0,
-//             -sin(pitch), 0, cos(pitch);
-//       Rz << cos(yaw), -sin(yaw), 0,
-//             sin(yaw), cos(yaw), 0,
-//             0, 0, 1;
-//       return Rz*Ry*Rx;
-//     }
-//   bool userotmat = false; //toggle true if origin.orien is assigned
-// };
-
-// class Link{
-//   public:
-//     Origin origin;
-//     Joint *parentJoint = NULL;
-//     bool isleaf = false;
-//     Eigen::Matrix3d inertia_b, inertia_w;
-//     Eigen::Vector3d COM; //com in world frame
-//     double mass;
-
-//     Eigen::Matrix3d getRot(){
-//       return Rot();
-//     }
-//     void setRot(Eigen::Matrix3d rot){
-//       origin.orien = rot;
-//       userotmat = true;
-//     }
-//     rigidbody RB(){
-//       return rigidbody{inertia_w, COM, mass};
-//     }
-
-//     Link(){
-//       origin.rpy.setZero();
-//       origin.xyz.setZero();
-//       origin.orien.setZero();
-//       inertia_b.setZero();
-//       inertia_w.setZero();
-//       COM.setZero();
-//     }
-
-//   private:
-//     Eigen::Matrix3d Rot(){
-//       Eigen::Matrix3d Rx, Ry, Rz;
-//       double roll, pitch, yaw;
-//       if(userotmat){
-//         return origin.orien;
-//       }
-//       else{
-//         roll=origin.rpy[0]; pitch=origin.rpy[1]; yaw=origin.rpy[2];
-//       }
-//       Rx << 1, 0, 0,
-//             0, cos(roll), -sin(roll),
-//             0, sin(roll), cos(roll);
-//       Ry << cos(pitch), 0, sin(pitch),
-//             0, 1, 0,
-//             -sin(pitch), 0, cos(pitch);
-//       Rz << cos(yaw), -sin(yaw), 0,
-//             sin(yaw), cos(yaw), 0,
-//             0, 0, 1;
-    
-//       return Rz*Ry*Rx;
-//     }
-//     bool userotmat = false;
-// };
-
-
-
-//////
+class Link;
+class Joint;
 class Kinematic_tree{
   public:
     Origin origin;
@@ -213,7 +67,6 @@ class Kinematic_tree{
     bool userotmat = false; //toggle true if origin.orien is assigned
 };
 
-class Link;
 class Joint : public Kinematic_tree{
   public:
     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
@@ -229,7 +82,6 @@ class Joint : public Kinematic_tree{
         Eigen::MatrixXd M = Eigen::MatrixXd::Zero(6,6);
         Eigen::VectorXd b = Eigen::VectorXd::Zero(6);
     } RB, AB; //stores M and b for rigid body and articulated body
-
 
     //this method returns the 6D motion subspace vector of the joint
     Eigen::VectorXd S(){
@@ -278,10 +130,6 @@ class Link : public Kinematic_tree{
       COM.setZero();
     }
 };
-
-///////
-
-
 
 Eigen::Matrix3d skew(Eigen::Vector3d vec){
   Eigen::Matrix3d skew;
@@ -488,12 +336,10 @@ Eigen::VectorXd ABA(Joint* base, const Eigen::VectorXd &gv, const Eigen::VectorX
     //compute kinematics and dynamics down the tree needed to complete NE of each body except the force
     //Compute M^A and b^A up the tree
     Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
-    std::cout << "Calling ABA1" << std::endl;
     ABA1(base, gv, tau, rot);
 
     //from the root to the leaves, compute udot and w
     Eigen::VectorXd udot = Eigen::VectorXd::Zero(18);
-    std::cout << "Calling ABA2" << std::endl;
     ABA2(base, gv, tau, udot);
     return udot;
 }
@@ -1155,14 +1001,14 @@ inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc
 //END OF RH
 
   /////// Start of actual code ///////
-  std::cout << "Calling eliminate_fixed_joints" << std::endl;
+  std::cout << "Calling eliminate_fixed_joints()" << std::endl;
   eliminate_fixed_joints(&base);
   // for debugging:
   // std::cout << "Calling traverse_tree" << std::endl;
   // traverse_tree(&base);
 
   //ABA calls two recursive sub functions to traverse the tree twice and compute udot
-  std::cout << "Calling ABA" << std::endl;
+  std::cout << "Calling ABA()" << std::endl;
   Eigen::VectorXd result = ABA(&base, gv, gf);  //Change gf to argument name for generalized force
 
   //should the z direction acceleration be shifted by 9.81?

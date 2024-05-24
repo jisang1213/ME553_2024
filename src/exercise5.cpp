@@ -34,11 +34,15 @@ int main(int argc, char* argv[]) {
 
   Eigen::VectorXd accel = computeGeneralizedAcceleration(gc, gv, gf);
 
-  if((accel - massMatrix.inverse() * (gf-nonlinearity)).norm() < 1e-8)
+  double error = (accel - massMatrix.inverse() * (gf-nonlinearity)).norm();
+  std::cout<<"error:  "<<error<< std::endl;
+
+  if(error< 1e-8) 
     std::cout<<"passed "<<std::endl;
-  else
-    std::cout<<"failed. The acceleration should be "<< (massMatrix.inverse() * (gf-nonlinearity)).transpose() <<std::endl;
-    std::cout<<"The acceleration is "<< accel.transpose() <<std::endl;
+  else 
+    std::cout<<"failed " <<std::endl;
+  std::cout<<"The acceleration should be "<< (massMatrix.inverse() * (gf-nonlinearity)).transpose() <<std::endl;
+  std::cout<<"The acceleration is "<< accel.transpose() <<std::endl;
 
   return 0;
 }
