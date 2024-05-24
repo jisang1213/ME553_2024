@@ -330,10 +330,8 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau
 
   //Recursively compute udot
   if(curjoint->isBase){
-    Eigen::VectorXd g(6);
-    g << 0,0,9.81,0,0,0;
     curjoint->accel = curjoint->AB.M.inverse()*(tau.head(6) - curjoint->AB.b);
-    udot.head(6) << curjoint->accel - g;
+    udot.head(6) << curjoint->accel;
   }
 
   ///***Does tau include gravity?///
@@ -360,18 +358,6 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau
     udot[j] = ((ST*M*S).inverse() * (tau.segment(j,1) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - ST*b)).value();
 
     childjoint->accel = S*udot(j) + Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot;
-
-
-
-    //compute the linear acceleration of the child joint
-    childjoint->accel.lin = curjoint->accel.lin + skew(curjoint->accel.ang)*(childjoint->w_pos - curjoint->w_pos)
-                            + skew(curjoint->w_ang_vel)*skew(curjoint->w_ang_vel)*(childjoint->w_pos - curjoint->w_pos);
-    //derivative of axis vector (wxr):
-    Eigen::Vector3d w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
-    //compute the angular acceleration of the child joint
-    childjoint->accel.ang = curjoint->accel.ang + w_dir_dot*gv(childjoint->jointID);
-
-
 
     ABA2(childjoint, gv, tau, udot);
   }
@@ -423,7 +409,7 @@ inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc
 
   //get base orientation
   Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
-  Eigen::Matrix3d orientation = q.toRotationMatrix();
+  Eigen::Matrix3d orientation = q.normalized().toRotationMatrix();
 
   //set base properties
   base.w_lin_vel = gv.segment(0,3);
