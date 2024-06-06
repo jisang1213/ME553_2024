@@ -5,11 +5,11 @@
 #include <vector>
 #include <iostream>
 
-struct Answers{
+typedef struct{
   Eigen::MatrixXd massmatrix;
   Eigen::VectorXd nonlinearities;
   Eigen::VectorXd accel;
-};
+} Answers;
 
 typedef struct{
   Eigen::Matrix3d orien;
@@ -29,7 +29,7 @@ class Kinematic_tree{
   public:
     Origin origin;
     Joint *parentJoint = NULL;
-    //this method returns the rotation matrix of the joint/link
+
     void setRot(Eigen::Matrix3d rot){
       origin.orien = rot;
       userotmat = true;
@@ -81,6 +81,7 @@ class Joint : public Kinematic_tree{
     std::vector<Link*> childlinks;
     int jointID = -1;
 
+    //this method returns the rotation matrix of the joint/link
     Eigen::Matrix3d getRot(){
       if(isRev){
         set_rpy(axis*theta, 0.0, 0.0);
@@ -115,25 +116,11 @@ class Joint : public Kinematic_tree{
 
     //this method returns the 6D motion subspace vector of the joint
     Eigen::VectorXd S(){
-      Eigen::VectorXd subspace(6);
-      if(isRev){
-        subspace << Eigen::VectorXd::Zero(3), w_dir;
-      }
-      else if(isPris){
-        subspace << w_dir, Eigen::VectorXd::Zero(3);
-      }
-      return subspace;
+      return subspace(w_dir);
     }
     //this method returns the time derivative of the 6D motion subspace vector of the joint
     Eigen::VectorXd Sdot(){
-      Eigen::VectorXd sdot(6);
-      if(isRev){
-        sdot << Eigen::VectorXd::Zero(3), w_dir_dot;
-      }
-      else if(isPris){
-        sdot << w_dir_dot, Eigen::VectorXd::Zero(3);
-      }
-      return sdot;
+      return subspace(w_dir_dot);
     }
     //this method returns the twist of the joint
     Eigen::VectorXd getTwist(){
@@ -141,7 +128,6 @@ class Joint : public Kinematic_tree{
       twist << w_lin_vel, w_ang_vel;
       return twist;
     }
-
     Joint(){
       w_dir.setZero();
       w_dir_dot.setZero();
@@ -150,6 +136,17 @@ class Joint : public Kinematic_tree{
       w_ang_vel.setZero();
       wrench.resize(6);
       wrench.setZero();
+    }
+  private:
+    Eigen::VectorXd subspace(Eigen::Vector3d vec3){
+      Eigen::VectorXd S(6);
+      if(isRev){
+        S << Eigen::VectorXd::Zero(3), vec3;
+      }
+      else if(isPris){
+        S << vec3, Eigen::VectorXd::Zero(3);
+      }
+      return S;
     }
 };
 
@@ -164,11 +161,9 @@ class Link : public Kinematic_tree{
       set_rpy(origin.rpy[0], origin.rpy[1], origin.rpy[2]);
       return Rot();
     }
-
     rigidbody RB(){
       return rigidbody{inertia_w, COM, mass};
     }
-
     Link(){
       inertia_b.setZero();
       inertia_w.setZero();
@@ -563,10 +558,7 @@ Eigen::VectorXd ABA(Joint* base, const Eigen::VectorXd &gv, const Eigen::VectorX
 }
 
 
-/// do not change the name of the method
 inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
-
-  /// !!!!!!!!!! NO RAISIM FUNCTIONS HERE !!!!!!!!!!!!!!!!!
 
 //URDF Parsing:
   Joint base, base_face_front, base_face_rear, base_to_docking_hatch_cover, base_to_lidar_cage, lidar_cage_to_lidar;
@@ -592,16 +584,14 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
         RH_thigh_fixed_RH_KFE, RH_KFE_rev, RH_shank_RH_shank_fixed, RH_shank_fixed_RH_FOOT;
   Link RH_HAA, RH_HIP, RH_hip_fixed, RH_HFE, RH_THIGH, RH_thigh_fixed, RH_KFE, RH_SHANK, RH_shank_fixed, RH_FOOT;
 
-  //get base orientation
-  Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
-  Eigen::Matrix3d orientation = q.normalized().toRotationMatrix();
-
   //PARAMETERS TO SET:
     //For Joints: origin, isBase, isRev, isPris, parentJoint, childlinks, childjoints, jointID, axis, theta
     //**jointID is gv index, not gc index
     //For Links: origin, isLeaf, parentJoint, mass, inertia_b
   
   //set base properties
+  Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
+  Eigen::Matrix3d orientation = q.normalized().toRotationMatrix();
   base.w_lin_vel = gv.segment(0,3);
   base.w_ang_vel = gv.segment(3,3);
   base.setRot(orientation);
@@ -1223,11 +1213,10 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
 //END OF RH
 
   Answers answer;
-
+  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
   eliminate_fixed_joints(&base);
 
   //CRBA
-  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
   Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(18, 18);
   CRBA(&base, rot, massMatrix);
   //fill in lower triangle of the mass matrix
@@ -1267,4 +1256,3 @@ inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc
   Answers answer = computeSolution(gc, gv, gf);
   return answer.accel;
 }
-
