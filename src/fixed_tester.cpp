@@ -42,7 +42,7 @@ int main(int argc, char* argv[]) {
 
     //CRBA TESTER
     error = (getMassMatrix(gc) - massMatrix).norm();
-    std::cout<<"error is "<< error<< std::endl;
+    //std::cout<<"error is "<< error<< std::endl;
     if(error < 1e-8)
       std::cout<<"CRBA passed "<<std::endl;
     else
@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
 
     //RNE TESTER
     error = (getNonlinearities(gc, gv) - nonlinearity).norm();
-    std::cout<<"error is "<< error<< std::endl;
+    //std::cout<<"error is "<< error<< std::endl;
     if(error < 1e-8){
       std::cout<<"RNE passed "<<std::endl;
     }
