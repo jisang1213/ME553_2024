@@ -299,6 +299,8 @@ void ABA2(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau
 
   //Recursively compute udot
   if(curjoint->isBase){
+    std::cout << "base AB inertia is: \n" << curjoint->AB.M <<std::endl;
+    std::cout << "base AB bias is: \n" << curjoint->AB.b <<std::endl;
     curjoint->accel = curjoint->AB.M.inverse()*(tau.head(6) - curjoint->AB.b);
     udot.head(6) << curjoint->accel;
   }
