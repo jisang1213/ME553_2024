@@ -23,6 +23,48 @@ typedef struct{
   double m;
 } rigidbody; //composite body inertia, COM, and mass
 
+//UTILS
+Eigen::Matrix3d skew(Eigen::Vector3d vec){
+  Eigen::Matrix3d skew;
+  skew << 0.0, -vec.z(), vec.y(),
+            vec.z(), 0.0, -vec.x(),
+            -vec.y(), vec.x(), 0.0;
+  return skew;
+}
+
+Eigen::Matrix3d inertia_tensor(double ixx, double ixy, double ixz, double iyy, double iyz, double izz){
+  Eigen::Matrix3d tensor;
+  tensor << ixx, ixy, ixz,
+            ixy, iyy, iyz,
+            ixz, iyz, izz;
+  return tensor;
+}
+
+Eigen::Vector3d newCOM(double m1, Eigen::Vector3d r1, double m2, Eigen::Vector3d r2){
+  return (m1*r1 + m2*r2)/(m1+m2);
+}
+
+rigidbody joinbodies(rigidbody B1, rigidbody B2){
+  Eigen::Vector3d COM = newCOM(B1.m, B1.COM, B2.m, B2.COM);
+  Eigen::Vector3d R1 = B1.COM - COM;
+  Eigen::Vector3d R2 = B2.COM - COM;
+  Eigen::Matrix3d combined_inertia = (B1.I + B2.I) - (B1.m * skew(R1)*skew(R1)) - (B2.m * skew(R2)*skew(R2));
+  return rigidbody{combined_inertia, COM, B1.m + B2.m};
+}
+
+Eigen::MatrixXd getX(Eigen::Vector3d r){
+    Eigen::MatrixXd Xbp = Eigen::MatrixXd::Identity(6, 6);
+    Xbp.block(3,0,3,3) = skew(r);
+    return Xbp;
+}
+
+Eigen::MatrixXd getXdot(Eigen::Vector3d r){
+    Eigen::MatrixXd Xbp = Eigen::MatrixXd::Zero(6, 6);
+    Xbp.block(3,0,3,3) = skew(r);
+    return Xbp;
+}
+
+//CLASSES
 class Link;
 class Joint;
 class Kinematic_tree{
@@ -41,16 +83,11 @@ class Kinematic_tree{
     }
   
   protected:
-    double roll, pitch, yaw;
-    void set_rpy(double r, double p, double y){
-      roll = r; pitch = p; yaw =y;
-    }
-
-    Eigen::Matrix3d Rot(){
-      Eigen::Matrix3d Rx, Ry, Rz;
+    Eigen::Matrix3d Rot(double roll, double pitch, double yaw){
       if(userotmat){
         return origin.orien;
       }
+      Eigen::Matrix3d Rx, Ry, Rz, R;
       Rx << 1, 0, 0,
             0, cos(roll), -sin(roll),
             0, sin(roll), cos(roll);
@@ -60,19 +97,20 @@ class Kinematic_tree{
       Rz << cos(yaw), -sin(yaw), 0,
             sin(yaw), cos(yaw), 0,
             0, 0, 1;
-    
-      return Rz*Ry*Rx;
+      R = Rz*Ry*Rx;
+      setRot(R);
+      return R;
     }
-  private:
     bool userotmat = false; //toggle true if origin.orien is assigned
 };
 
 class Joint : public Kinematic_tree{
   public:
-    double axis, theta;
     bool isRev = false;
     bool isPris = false;
     bool isBase = false;
+    double theta;
+    Eigen::Vector3d axis;
     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
     Eigen::Vector3d w_pos;  //position of joint in world frame
     Eigen::Vector3d w_lin_vel, w_ang_vel;
@@ -83,16 +121,15 @@ class Joint : public Kinematic_tree{
 
     //this method returns the rotation matrix of the joint/link
     Eigen::Matrix3d getRot(){
-      if(isRev){
-        set_rpy(axis*theta, 0.0, 0.0);
+      if(isRev && !userotmat){
+        return Eigen::AngleAxisd(theta, axis).toRotationMatrix();
       }
       else if(isPris){
-        set_rpy(0.0, 0.0, 0.0);
+        return Rot(0.0, 0.0, 0.0);
       }
       else{
-        set_rpy(origin.rpy[0], origin.rpy[1], origin.rpy[2]);
+        return Rot(origin.rpy[0], origin.rpy[1], origin.rpy[2]);
       }
-      return Rot();
     }
 
     struct acceleration{
@@ -158,8 +195,7 @@ class Link : public Kinematic_tree{
     double mass;
 
     Eigen::Matrix3d getRot(){
-      set_rpy(origin.rpy[0], origin.rpy[1], origin.rpy[2]);
-      return Rot();
+      return Rot(origin.rpy[0], origin.rpy[1], origin.rpy[2]);
     }
     rigidbody RB(){
       return rigidbody{inertia_w, COM, mass};
@@ -171,46 +207,6 @@ class Link : public Kinematic_tree{
     }
 };
 
-Eigen::Matrix3d skew(Eigen::Vector3d vec){
-  Eigen::Matrix3d skew;
-  skew << 0.0, -vec.z(), vec.y(),
-            vec.z(), 0.0, -vec.x(),
-            -vec.y(), vec.x(), 0.0;
-  return skew;
-}
-
-Eigen::Matrix3d inertia_tensor(double ixx, double ixy, double ixz, double iyy, double iyz, double izz){
-  Eigen::Matrix3d tensor;
-  tensor << ixx, ixy, ixz,
-            ixy, iyy, iyz,
-            ixz, iyz, izz;
-  return tensor;
-}
-
-Eigen::Vector3d newCOM(double m1, Eigen::Vector3d r1, double m2, Eigen::Vector3d r2){
-  return (m1*r1 + m2*r2)/(m1+m2);
-}
-
-rigidbody joinbodies(rigidbody B1, rigidbody B2){
-  Eigen::Vector3d COM = newCOM(B1.m, B1.COM, B2.m, B2.COM);
-  Eigen::Vector3d R1 = B1.COM - COM;
-  Eigen::Vector3d R2 = B2.COM - COM;
-  Eigen::Matrix3d combined_inertia = (B1.I + B2.I) - (B1.m * skew(R1)*skew(R1)) - (B2.m * skew(R2)*skew(R2));
-  return rigidbody{combined_inertia, COM, B1.m + B2.m};
-}
-
-Eigen::MatrixXd getX(Eigen::Vector3d r){
-    Eigen::MatrixXd Xbp = Eigen::MatrixXd::Identity(6, 6);
-    Xbp.block(3,0,3,3) = skew(r);
-    return Xbp;
-}
-
-Eigen::MatrixXd getXdot(Eigen::Vector3d r){
-    Eigen::MatrixXd Xbp = Eigen::MatrixXd::Zero(6, 6);
-    Xbp.block(3,0,3,3) = skew(r);
-    return Xbp;
-}
-
 //function to eliminate all fixed joints
 void eliminate_fixed_joints(Joint* curjoint){
   //down path
@@ -218,8 +214,7 @@ void eliminate_fixed_joints(Joint* curjoint){
   std::vector<Joint*> childjoints_copy = curjoint->childjoints;
   for(Joint* childjoint : childjoints_copy){
     if(childjoint->isPris){
-      Eigen::Vector3d axis(childjoint->axis, 0.0, 0.0);
-      childjoint->origin.xyz = axis*childjoint->theta;
+      childjoint->origin.xyz += childjoint->axis*childjoint->theta;
     }
     eliminate_fixed_joints(childjoint);
   }
@@ -269,8 +264,7 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
   //Store these in Eigen::Vector3d w_dir and Eigen::Vector3d w_pos of the Joint class
   for(Joint* childjoint : curjoint->childjoints){
     Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
-    Eigen::Vector3d axis(childjoint->axis, 0.0, 0.0);
-    childjoint->w_dir = R*axis;
+    childjoint->w_dir = R*childjoint->axis;
     childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
   }
 
@@ -343,8 +337,7 @@ Eigen::VectorXd RNE(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::VectorXd 
   //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
   for(Joint* childjoint : curjoint->childjoints){
     Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
-    Eigen::Vector3d axis(childjoint->axis, 0.0, 0.0);
-    childjoint->w_dir = R*axis;
+    childjoint->w_dir = R*childjoint->axis;
     childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
     if(childjoint->isRev){
       childjoint->w_ang_vel = curjoint->w_ang_vel + gv(childjoint->jointID) * childjoint->w_dir; //angular velocity of rotating child frame
@@ -452,8 +445,7 @@ Joint::Inertial_body ABA1(Joint* curjoint, const Eigen::VectorXd &gv, const Eige
   //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
   for(Joint* childjoint : curjoint->childjoints){
     Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
-    Eigen::Vector3d axis(childjoint->axis, 0.0, 0.0);
-    childjoint->w_dir = R*axis;
+    childjoint->w_dir = R*childjoint->axis;
     childjoint->w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
     childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
     if(childjoint->isRev){
@@ -705,7 +697,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint LF_HAA_rev;
   LF_HAA_rev.jointID = 6;
   LF_HAA_rev.isRev = true;
-  LF_HAA_rev.axis = 1;
+  LF_HAA_rev.axis << 1,0,0;
   LF_HAA_rev.theta = gc[7]; //TOOD
   LF_HAA_rev.parentJoint = &base_LF_HAA;
   LF_HAA_rev.childlinks.push_back(&LF_HIP);
@@ -744,7 +736,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint LF_HFE_rev;
   LF_HFE_rev.jointID = 7;
   LF_HFE_rev.isPris = true;
-  LF_HFE_rev.axis = 1;
+  LF_HFE_rev.axis << 1,0,0;
   LF_HFE_rev.theta = gc[8]; //TODO
   LF_HFE_rev.parentJoint = &LF_hip_fixed_LF_HFE;
   LF_HFE_rev.childlinks.push_back(&LF_THIGH);
@@ -783,7 +775,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint LF_KFE_rev;
   LF_KFE_rev.jointID = 8;
   LF_KFE_rev.isRev = true;
-  LF_KFE_rev.axis = 1;
+  LF_KFE_rev.axis << 1,0,0;
   LF_KFE_rev.theta = gc[9]; //TODO
   LF_KFE_rev.parentJoint = &LF_thigh_fixed_LF_KFE;
   LF_KFE_rev.childlinks.push_back(&LF_SHANK);
@@ -836,7 +828,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint RF_HAA_rev;
   RF_HAA_rev.jointID = 9;
   RF_HAA_rev.isRev = true;
-  RF_HAA_rev.axis = 1;
+  RF_HAA_rev.axis << 1,0,0;
   RF_HAA_rev.theta = gc[10]; //TOOD
   RF_HAA_rev.parentJoint = &base_RF_HAA;
   RF_HAA_rev.childlinks.push_back(&RF_HIP);
@@ -875,7 +867,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint RF_HFE_rev;
   RF_HFE_rev.jointID = 10;
   RF_HFE_rev.isRev = true;
-  RF_HFE_rev.axis = -1;
+  RF_HFE_rev.axis << -1,0,0;
   RF_HFE_rev.theta = gc[11]; //TOOD
   RF_HFE_rev.parentJoint = &RF_hip_fixed_RF_HFE;
   RF_HFE_rev.childlinks.push_back(&RF_THIGH);
@@ -914,7 +906,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint RF_KFE_rev;
   RF_KFE_rev.jointID = 11;
   RF_KFE_rev.isRev = true;
-  RF_KFE_rev.axis = -1;
+  RF_KFE_rev.axis << -1,0,0;
   RF_KFE_rev.theta = gc[12]; //TOOD
   RF_KFE_rev.parentJoint = &RF_thigh_fixed_RF_KFE;
   RF_KFE_rev.childlinks.push_back(&RF_SHANK);
@@ -967,7 +959,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint LH_HAA_rev;
   LH_HAA_rev.jointID = 12;
   LH_HAA_rev.isRev = true;
-  LH_HAA_rev.axis = -1;
+  LH_HAA_rev.axis << -1,0,0;
   LH_HAA_rev.theta = gc[13]; //TOOD
   LH_HAA_rev.parentJoint = &base_LH_HAA;
   LH_HAA_rev.childlinks.push_back(&LH_HIP);
@@ -1006,7 +998,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint LH_HFE_rev;
   LH_HFE_rev.jointID = 13;
   LH_HFE_rev.isRev = true;
-  LH_HFE_rev.axis = 1;
+  LH_HFE_rev.axis << 1,0,0;
   LH_HFE_rev.theta = gc[14]; //TOOD
   LH_HFE_rev.parentJoint = &LH_hip_fixed_LH_HFE;
   LH_HFE_rev.childlinks.push_back(&LH_THIGH);
@@ -1045,7 +1037,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint LH_KFE_rev;
   LH_KFE_rev.jointID = 14;
   LH_KFE_rev.isRev = true;
-  LH_KFE_rev.axis = 1;
+  LH_KFE_rev.axis << 1,0,0;
   LH_KFE_rev.theta = gc[15]; //TOOD
   LH_KFE_rev.parentJoint = &LH_thigh_fixed_LH_KFE;
   LH_KFE_rev.childlinks.push_back(&LH_SHANK);
@@ -1098,7 +1090,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint RH_HAA_rev;
   RH_HAA_rev.jointID = 15;
   RH_HAA_rev.isRev = true;
-  RH_HAA_rev.axis = -1;
+  RH_HAA_rev.axis << -1,0,0;
   RH_HAA_rev.theta = gc[16]; //TOOD
   RH_HAA_rev.parentJoint = &base_RH_HAA;
   RH_HAA_rev.childlinks.push_back(&RH_HIP);
@@ -1137,7 +1129,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint RH_HFE_rev;
   RH_HFE_rev.jointID = 16;
   RH_HFE_rev.isRev = true;
-  RH_HFE_rev.axis = -1;
+  RH_HFE_rev.axis << -1,0,0;
   RH_HFE_rev.theta = gc[17]; //TOOD
   RH_HFE_rev.parentJoint = &RH_hip_fixed_RH_HFE;
   RH_HFE_rev.childlinks.push_back(&RH_THIGH);
@@ -1176,7 +1168,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //Joint RH_KFE_rev;
   RH_KFE_rev.jointID = 17;
   RH_KFE_rev.isRev = true;
-  RH_KFE_rev.axis = -1;
+  RH_KFE_rev.axis << -1,0,0;
   RH_KFE_rev.theta = gc[18]; //TOOD
   RH_KFE_rev.parentJoint = &RH_thigh_fixed_RH_KFE;
   RH_KFE_rev.childlinks.push_back(&RH_SHANK);
@@ -1217,10 +1209,11 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   eliminate_fixed_joints(&base);
 
   //CRBA
-  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(18, 18);
+  int dof = gc.size()-1;
+  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(dof, dof);
   CRBA(&base, rot, massMatrix);
   //fill in lower triangle of the mass matrix
-  for (int i = 0; i < 18; i++) {
+  for (int i = 0; i < dof; i++) {
     for (int j = 0; j < i; j++) {
         massMatrix(i, j) = massMatrix(j, i);
     }
@@ -1229,7 +1222,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
 
   //RNE
   base.accel.lin << 0, 0, 9.81;
-  Eigen::VectorXd b_vector = Eigen::VectorXd::Zero(18);
+  Eigen::VectorXd b_vector = Eigen::VectorXd::Zero(dof);
   rot = Eigen::Matrix3d::Identity();
   RNE(&base, rot, gv, b_vector);
   answer.nonlinearities = b_vector;
@@ -1243,12 +1236,14 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
 }
 
 inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
-  Answers answer = computeSolution(gc, Eigen::VectorXd::Zero(18), Eigen::VectorXd::Zero(18));
+  int dof = gc.size()-1;
+  Answers answer = computeSolution(gc, Eigen::VectorXd::Zero(dof), Eigen::VectorXd::Zero(dof));
   return answer.massmatrix;
 }
 
 inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
-  Answers answer = computeSolution(gc, gv, Eigen::VectorXd::Zero(18));
+  int dof = gc.size()-1;
+  Answers answer = computeSolution(gc, gv, Eigen::VectorXd::Zero(dof));
   return answer.nonlinearities;
 }
 

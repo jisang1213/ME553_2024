@@ -624,7 +624,7 @@
         </inertial>
     </link>
     <!-- joint Drive output -->
-    <joint name="LF_HFE" type="revolute">
+    <joint name="LF_HFE" type="prismatic">
         <parent link="LF_HFE"/>
         <child link="LF_THIGH"/>
         <origin rpy="0 0 0" xyz="0 0 0"/>
@@ -1537,4 +1537,3 @@
         </inertial>
     </link>
 </robot>
-

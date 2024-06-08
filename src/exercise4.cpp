@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) {
   // gc << 0, 0, 0.54, 1.0, 0.0, 0.0, 0.0, 0.03, 0.4, -0.8, -0.03, 0.4, -0.8, 0.03, -0.4, 0.8, -0.03, -0.4, 0.8; /// Jemin: I'll randomize the gc, gv when grading
   // gv << 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8;
 
-  for(int i=0; i<100; i++){
+  for(int i=0; i<5; i++){
     gc = Eigen::VectorXd::Random(19);
     gv = Eigen::VectorXd::Random(18);
     anymal->setState(gc, gv);
@@ -36,8 +36,8 @@ int main(int argc, char* argv[]) {
     world.integrate1();
     anymal->getMassMatrix();
 
-    std::cout<<"nonlinearities should be \n"<< anymal->getNonlinearities({0,0,-9.81}).e().transpose()<<std::endl;
-    std::cout<<"nonlinearities are \n"<< getNonlinearities(gc, gv).transpose()<<std::endl;
+    // std::cout<<"nonlinearities should be \n"<< anymal->getNonlinearities({0,0,-9.81}).e().transpose()<<std::endl;
+    // std::cout<<"nonlinearities are \n"<< getNonlinearities(gc, gv).transpose()<<std::endl;
 
     double error = (getNonlinearities(gc, gv) - anymal->getNonlinearities({0,0,-9.81}).e()).norm();
     std::cout<<"error is "<< error<< std::endl;

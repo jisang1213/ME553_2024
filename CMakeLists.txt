@@ -7,12 +7,13 @@ include(cmake/helper.cmake)
 # exercise
 #create_executable(exercise1 src/exercise1.cpp)
 #create_executable(exercise2 src/exercise2.cpp)
-#create_executable(exercise3 src/exercise3.cpp)
-# create_executable(exercise4 src/exercise4.cpp)
-create_executable(exercise5 src/exercise5.cpp)
+#create_executable(CRBA src/exercise3.cpp)
+#create_executable(RNE src/exercise4.cpp)
+#create_executable(ABA src/exercise5.cpp)
+create_executable(tester src/tester.cpp)
+create_executable(fixed src/fixed_tester.cpp)
 
 # examples
 #create_executable(rotation_example_angle_axis src/rotation_example_angle_axis.cpp)
 #create_executable(rotation_example_euler_angles src/rotation_example_euler_angles.cpp)
 #create_executable(dzhan src/dzhan.cpp)
-#create_executable(test src/test.cpp)

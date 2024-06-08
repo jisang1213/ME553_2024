@@ -5,8 +5,7 @@
 #define _MAKE_STR(x) __MAKE_STR(x)
 #define __MAKE_STR(x) #x
 
-//#include "exercise1_copy.hpp"
-#include "test.hpp"
+#include "exercise1_20190837.hpp"
 #include "raisim/RaisimServer.hpp"
 
 
