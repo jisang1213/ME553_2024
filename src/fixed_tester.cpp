@@ -20,17 +20,25 @@ int main(int argc, char* argv[]) {
   // anymal configuration
   Eigen::VectorXd gc(anymal->getGeneralizedCoordinateDim()), gv(anymal->getDOF()), gf(anymal->getDOF());
 
-  for(int i=0; i<100; i++){
-    gc = Eigen::VectorXd::Random(anymal->getGeneralizedCoordinateDim());
-    gv = Eigen::VectorXd::Random(anymal->getDOF());
-    gf = Eigen::VectorXd::Random(anymal->getDOF());
+  gc << 0.1,0.2,0.3;
+  gv << 0.1,0.2,0.3;
+  gf << 0.1,0.2,0.3;
+
+  for(int i=0; i<2; i++){
+    // gc = Eigen::VectorXd::Random(anymal->getGeneralizedCoordinateDim());
+    // gv = Eigen::VectorXd::Random(anymal->getDOF());
+    // gf = Eigen::VectorXd::Random(anymal->getDOF());
+
+    gc *= 0.9;
+    gv *= 0.9;
+    gf *= 0.9;
     
     anymal->setState(gc, gv);
     anymal->setGeneralizedForce(gf);
 
     // /// if you are using an old version of Raisim, you need this line
-    world.integrate1();
-    anymal->getMassMatrix();
+    // world.integrate1();
+    // anymal->getMassMatrix();
 
     //precalculate the mass matrix and nonlinearities
     Eigen::VectorXd nonlinearity(anymal->getDOF());
@@ -49,7 +57,10 @@ int main(int argc, char* argv[]) {
       std::cout<<"CRBA failed "<<std::endl; 
 
     //RNE TESTER
-    error = (getNonlinearities(gc, gv) - nonlinearity).norm();
+Eigen::VectorXd nl = getNonlinearities(gc, gv);
+std::cout<<"raisim nonlinearity: " << nonlinearity.transpose() <<std::endl;
+std::cout<<"my nonlinearity: " << nl.transpose() <<std::endl;
+    error = (nl - nonlinearity).norm();
     //std::cout<<"error is "<< error<< std::endl;
     if(error < 1e-8){
       std::cout<<"RNE passed "<<std::endl;
