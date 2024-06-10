@@ -10,12 +10,6 @@
   </joint>
 
   <link name="sliderBar">
-    <visual>
-      <geometry>
-        <cylinder radius="0.05" length="40"/>
-      </geometry>
-      <origin xyz="0 0 0" rpy="0 1.5708 0"/>
-    </visual>
     <inertial>
       <mass value="0"/>
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>

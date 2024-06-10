@@ -1,3 +1,5 @@
+cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/Users/jisangyou/Desktop/raisim_ws/raisimLib/raisim/mac
+
 cmake .. -DCMAKE_BUILD_TYPE=RELEASE -DCMAKE_PREFIX_PATH="/home/jakob/Desktop/ME491/raisimLib/thirdParty/Eigen3;/home/jakob/Desktop/ME491/raisimLib/raisim/linux"
 make -j
 

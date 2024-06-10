@@ -289,11 +289,9 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
   spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
   spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
 
-  if(curjoint->isBase){
-    if(curjoint->isFloating){
-      //put the spatial inertial matrix in the top 6x6 lefthand corner of the mass matrix
-      massmatrix.block(0, 0, 6, 6) = spatialInertial;
-    }
+  if(curjoint->isFloating){
+    //put the spatial inertial matrix in the top 6x6 lefthand corner of the mass matrix
+    massmatrix.block(0, 0, 6, 6) = spatialInertial;
   }
   else{
     //compute and fill Mi,j for all i<=j
@@ -303,19 +301,14 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
     while(!joint_i->isBase){
       Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
       IR.block(0, 3, 3, 3) = skew(rji);
-
-      double Mij = curjoint->S().transpose()*spatialInertial*IR*joint_i->S();
-      massmatrix(joint_i->jointID, curjoint->jointID) = Mij;
-
+      massmatrix(joint_i->jointID, curjoint->jointID) = curjoint->S().transpose()*spatialInertial*IR*joint_i->S();
       joint_i = joint_i->parentJoint;
     }
 
-    //quick-fix lambda function to check if base is floating:
-    auto isFloatingBase = [curjoint]() -> bool {
+    //quick-fix lambda to check if base is floating:
+    auto isFloatingBase = [&curjoint]() -> bool {
       Joint* temp = curjoint;
-      while(!temp->isBase){
-        temp = temp->parentJoint;
-      }
+      while(!temp->isBase) temp = temp->parentJoint;
       return temp->isFloating;
     };
 
@@ -412,14 +405,14 @@ Eigen::VectorXd RNE(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::VectorXd 
   //compute wrench at joint
   curjoint->wrench = spatialInertial * curjoint->accel.get6D() + fictious_forces + wrench;
 
-  //for floating base,
   if(curjoint->isBase){
     if(curjoint->isFloating){
+      //for floating base
       b_vector.head(6) << curjoint->wrench;
     }
   }
-  //find transmitted generalized force
   else{
+    //find transmitted generalized force
     b_vector[curjoint->jointID] = curjoint->S().dot(curjoint->wrench);
   }
   return curjoint->wrench;

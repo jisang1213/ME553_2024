@@ -576,13 +576,12 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
     //For Links: origin, isLeaf, parentJoint, mass, inertia_b
 
 
-//URDF FOR /2DrobotArm/robot_3D.urdf
-
   Joint base, slider, rod_revolute, rod_revolute2;
   Link sliderBar, slider_link, rod, rod2;
   
   //first fixed joint is the base joint
   base.isBase = true;
+  base.isFloating = false;
   base.childjoints.push_back(&slider);
 
   slider.parentJoint = &base;
@@ -591,6 +590,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   slider.theta = gc[0];
   slider.childlinks.push_back(&slider_link);
   slider.childjoints.push_back(&rod_revolute);
+  slider.childjoints.push_back(&rod_revolute2);
   slider.jointID = 0;
 
   slider_link.parentJoint = &slider;

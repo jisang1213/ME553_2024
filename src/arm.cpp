@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
   //error
   double error;
 
-  for(int i=0; i<10; i++){
+  for(int i=0; i<1; i++){
     gc = Eigen::VectorXd::Random(anymal->getGeneralizedCoordinateDim());
     gv = Eigen::VectorXd::Random(anymal->getDOF());
     gf = Eigen::VectorXd::Random(anymal->getDOF());
