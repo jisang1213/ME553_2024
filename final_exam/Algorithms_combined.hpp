@@ -3,6 +3,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <vector>
+#include <string>
 #include <iostream>
 
 typedef struct{
@@ -71,6 +72,7 @@ class Kinematic_tree{
   public:
     Origin origin;
     Joint *parentJoint = NULL;
+    std::string name;
 
     Eigen::Matrix3d setRot(Eigen::Matrix3d rot){
       origin.orien = rot;
@@ -107,6 +109,8 @@ class Kinematic_tree{
 
 class Joint : public Kinematic_tree{
   public:
+    std::string childlink;
+    std::string parentlink;
     bool isRev = false;
     bool isPris = false;
     bool isBase = false;
@@ -194,7 +198,7 @@ class Link : public Kinematic_tree{
     bool isLeaf = false;
     Eigen::Matrix3d inertia_b, inertia_w;
     Eigen::Vector3d COM; //com in world frame
-    double mass;
+    double mass=0;
 
     Eigen::Matrix3d getRot(){
       return Rot(origin.rpy[0], origin.rpy[1], origin.rpy[2]);
@@ -207,6 +211,54 @@ class Link : public Kinematic_tree{
       inertia_w.setZero();
       COM.setZero();
     }
+};
+
+class ArticulatedSystem{
+  public:
+    void addjoint(Joint* joint){
+      if(joint->isBase){
+        root = joint;
+        floating = joint->isFloating;
+      }
+      joints.push_back(joint);
+    }
+    void addlink(Link* link){
+      links.push_back(link);
+    }
+    void makeTree(){
+      //connect all links to joints and joints to links
+      for(Joint* joint : joints){
+        for(Link* link : links){
+          if(joint->childlink == link->name){
+            joint->childlinks.push_back(link);
+            link->parentJoint = joint;
+          }
+        }
+      }
+      //connect all child and parent joints
+      for(Joint* joint : joints){
+        for(Link* link : links){
+          if(joint->parentlink == link->name){
+            joint->parentJoint = link->parentJoint;
+            joint->parentJoint->childjoints.push_back(joint);
+          }
+        }
+      }
+    }
+    Joint* getRoot(){
+      return root;
+    }
+    bool isFloating(){
+      return floating;
+    }
+  //every joint and link has a parent joint except the base joint
+  //each joint has a child joint and child link
+  //each joint knows its parent and child links
+  private:
+    std::vector<Joint*> joints;
+    std::vector<Link*> links;
+    Joint* root;
+    bool floating = false;
 };
 
 //function to eliminate all fixed joints
@@ -565,6 +617,125 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
     //jointID = gc index for fixed base, gc_index-1 for floating base
     //For floating base, gc and gv for joints start from indices 7 and 6, respectively
     //For Links: origin, isLeaf, parentJoint, mass, inertia_b
+
+
+//URDF FOR /2DrobotArm/robot_3D.urdf
+  ArticulatedSystem robot;
+  Joint j1, j2, j3, j4;
+  Link l1, l2, l3, l4;
+  
+  //first fixed joint is the base joint - it has no parent link
+  j1.isBase = true;
+  j1.childlink = "link1";
+  robot.addjoint(&j1);
+
+  l1.name = "link1";
+  robot.addlink(&l1);
+
+  j2.parentlink = "link1";
+  j2.childlink = "link2";
+  j2.origin.xyz << 0.,0.,0.3;
+  j2.isRev = true;
+  j2.axis << 1,0,0;
+  j2.theta = gc[0];
+  j2.jointID = 0;
+  robot.addjoint(&j2);
+
+  l2.name = "link2";
+  l2.origin.xyz << 0,0,0.2;
+  l2.mass = 1;
+  l2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  robot.addlink(&l2);
+
+  j3.parentlink = "link2";
+  j3.childlink = "link3";
+  j3.origin.xyz << 0,0,0.3;
+  j3.isRev = true;
+  j3.axis << 1,0,0;
+  j3.theta = gc[1];
+  j3.jointID = 1;
+  robot.addjoint(&j3);
+
+  l3.name = "link3";
+  l3.origin.xyz << 0,0,0.2;
+  l3.mass = 1;
+  l3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  robot.addlink(&l3);
+
+  j4.parentlink = "link3";
+  j4.childlink = "link4";
+  j4.origin.xyz << 0,0,0.3;
+  j4.isPris = true;
+  j4.axis << 0,1,0;
+  j4.theta = gc[2];
+  j4.jointID = 2;
+  robot.addjoint(&j4);
+
+  l4.name = "link4";
+  l4.origin.xyz << 0.,0.,0.2;
+  l4.mass = 1;
+  l4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  l4.isLeaf = true;
+  robot.addlink(&l4);
+
+  robot.makeTree();
+
+///END OF URDF
+
+  //find the dof
+  int dof;
+  if(robot.isFloating()) dof = gc.size()-1; //dim of gv is 1 less than dim of gc for floating base
+  else dof = gc.size(); //gc and gv have same dim for fixed base
+  //Create container for answers
+  Answers answer;
+  //First, eliminate all fixed joint
+  eliminate_fixed_joints(robot.getRoot());
+
+  //CRBA
+  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(dof, dof);
+  CRBA(robot.getRoot(), Eigen::Matrix3d::Identity(), massMatrix);
+  //fill in lower triangle of the mass matrix
+  for (int i = 0; i < dof; i++) {
+    for (int j = 0; j < i; j++) {
+        massMatrix(i, j) = massMatrix(j, i);
+    }
+  }
+  answer.massmatrix = massMatrix;
+
+  //RNE
+  robot.getRoot()->accel.lin << 0, 0, 9.81;
+  Eigen::VectorXd b_vector = Eigen::VectorXd::Zero(dof);
+  RNE(robot.getRoot(), Eigen::Matrix3d::Identity(), gv, b_vector);
+  answer.nonlinearities = b_vector;
+
+  //ABA
+  Eigen::VectorXd result = ABA(robot.getRoot(), gv, gf);
+  result[2] -= 9.81;
+  answer.accel = result;
+
+  return answer;
+}
+
+//Set the size of placeholder vectors to DOF
+inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
+  Answers answer = computeSolution(gc, Eigen::VectorXd::Zero(99), Eigen::VectorXd::Zero(99));
+  return answer.massmatrix;
+}
+
+inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
+  Answers answer = computeSolution(gc, gv, Eigen::VectorXd::Zero(99));
+  return answer.nonlinearities;
+}
+
+inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
+  Answers answer = computeSolution(gc, gv, gf);
+  return answer.accel;
+}
+
+
+
+
+
 
 
 //   Joint base, base_face_front, base_face_rear, base_to_docking_hatch_cover, base_to_lidar_cage, lidar_cage_to_lidar;
@@ -1215,108 +1386,3 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
 //   RH_FOOT.mass = 0.25;
 //   RH_FOOT.inertia_b = inertia_tensor(0.00317174097, 2.63048e-06, -6.815581e-05, 0.00317174092, -6.815583e-05, 8.319196e-05);
 // //END OF RH
-
-
-//URDF FOR /2DrobotArm/robot_3D.urdf
-
-  Joint base, link1Tolink2, link2Tolink3, link3Tolink4;
-  Link link2, link3, link4;
-  
-  //first fixed joint is the base joint
-  base.isBase = true;
-  base.isFloating = false;
-  base.childjoints.push_back(&link1Tolink2);
-
-  link1Tolink2.parentJoint = &base;
-  link1Tolink2.origin.xyz << 0.,0.,0.3;
-  link1Tolink2.isRev = true;
-  link1Tolink2.axis << 1.,0.,0.;
-  link1Tolink2.theta = gc[0];
-  link1Tolink2.childlinks.push_back(&link2);
-  link1Tolink2.childjoints.push_back(&link2Tolink3);
-  link1Tolink2.jointID = 0;
-
-  link2.parentJoint = &link1Tolink2;
-  link2.origin.xyz << 0.,0.,0.2;
-  link2.mass = 1;
-  link2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-
-  link2Tolink3.parentJoint = &link1Tolink2;
-  link2Tolink3.origin.xyz << 0.,0.,0.3;
-  link2Tolink3.isRev = true;
-  link2Tolink3.axis << 1,0,0;
-  link2Tolink3.theta = gc[1];
-  link2Tolink3.childlinks.push_back(&link3);
-  link2Tolink3.childjoints.push_back(&link3Tolink4);
-  link2Tolink3.jointID = 1;
-
-  link3.parentJoint = &link2Tolink3;
-  link3.origin.xyz << 0.,0.,0.2;
-  link3.mass = 1;
-  link3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-
-  link3Tolink4.parentJoint = &link2Tolink3;
-  link3Tolink4.origin.xyz << 0,0,0.3;
-  link3Tolink4.isPris = true;
-  link3Tolink4.axis << 0,1,0;
-  link3Tolink4.theta = gc[2];
-  link3Tolink4.childlinks.push_back(&link4);
-  link3Tolink4.jointID = 2;
-
-  link4.parentJoint = &link3Tolink4;
-  link4.origin.xyz << 0.,0.,0.2;
-  link4.mass = 1;
-  link4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  link4.isLeaf = true;
-
-///END OF URDF
-
-  //find the dof
-  int dof;
-  if(base.isFloating) dof = gc.size()-1; //dim of gv is 1 less than dim of gc for floating base
-  else dof = gc.size(); //gc and gv have same dim for fixed base
-  //Create container for answers
-  Answers answer;
-  //First, eliminate all fixed joint
-  eliminate_fixed_joints(&base);
-
-  //CRBA
-  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(dof, dof);
-  CRBA(&base, Eigen::Matrix3d::Identity(), massMatrix);
-  //fill in lower triangle of the mass matrix
-  for (int i = 0; i < dof; i++) {
-    for (int j = 0; j < i; j++) {
-        massMatrix(i, j) = massMatrix(j, i);
-    }
-  }
-  answer.massmatrix = massMatrix;
-
-  //RNE
-  base.accel.lin << 0, 0, 9.81;
-  Eigen::VectorXd b_vector = Eigen::VectorXd::Zero(dof);
-  RNE(&base, Eigen::Matrix3d::Identity(), gv, b_vector);
-  answer.nonlinearities = b_vector;
-
-  //ABA
-  Eigen::VectorXd result = ABA(&base, gv, gf);
-  result[2] -= 9.81;
-  answer.accel = result;
-
-  return answer;
-}
-
-//Set the size of placeholder vectors to DOF
-inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
-  Answers answer = computeSolution(gc, Eigen::VectorXd::Zero(99), Eigen::VectorXd::Zero(99));
-  return answer.massmatrix;
-}
-
-inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
-  Answers answer = computeSolution(gc, gv, Eigen::VectorXd::Zero(99));
-  return answer.nonlinearities;
-}
-
-inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
-  Answers answer = computeSolution(gc, gv, gf);
-  return answer.accel;
-}
