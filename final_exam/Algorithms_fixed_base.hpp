@@ -109,6 +109,7 @@ class Joint : public Kinematic_tree{
     bool isRev = false;
     bool isPris = false;
     bool isBase = false;
+    bool isFloating = false;
     double theta;
     Eigen::Vector3d axis;
     Eigen::Vector3d w_dir, w_dir_dot;   //axis direction vector in world frame
@@ -287,18 +288,25 @@ rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix
   spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
   spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
 
-  //compute and fill Mi,j for all i<=j
-  Joint* joint_i = curjoint;    //curjoint is joint j
-  Eigen::MatrixXd IR = Eigen::MatrixXd::Identity(6, 6);
-  //joint to joint coupling: 
-  while(!joint_i->isBase){
-    Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
-    IR.block(0, 3, 3, 3) = skew(rji);
+  if(curjoint->isBase && curjoint->isFloating){
+    //put the spatial inertial matrix in the top 6x6 lefthand corner of the mass matrix
+    //use composite to fill in spatial inertial matrix here
+    massmatrix.block(0, 0, 6, 6) = spatialInertial;
+  }
+  else{
+    //compute and fill Mi,j for all i<=j
+    Joint* joint_i = curjoint;    //curjoint is joint j
+    Eigen::MatrixXd IR = Eigen::MatrixXd::Identity(6, 6);
+    //joint to joint coupling: 
+    while(!joint_i->isBase){
+      Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
+      IR.block(0, 3, 3, 3) = skew(rji);
 
-    double Mij = curjoint->S().transpose()*spatialInertial*IR*joint_i->S();
-    massmatrix(joint_i->jointID, curjoint->jointID) = Mij;
+      double Mij = curjoint->S().transpose()*spatialInertial*IR*joint_i->S();
+      massmatrix(joint_i->jointID, curjoint->jointID) = Mij;
 
-    joint_i = joint_i->parentJoint;
+      joint_i = joint_i->parentJoint;
+    }
   }
   return composite;
 }
@@ -381,11 +389,158 @@ Eigen::VectorXd RNE(Joint* curjoint, Eigen::Matrix3d rot, const Eigen::VectorXd 
 
   //compute wrench at joint
   curjoint->wrench = spatialInertial * curjoint->accel.get6D() + fictious_forces + wrench;
+
+  //for floating base,
+  if(curjoint->isBase){
+    if(curjoint->isFloating){
+      b_vector.head(6) << curjoint->wrench;
+    }
+  }
   //find transmitted generalized force
-  if(!curjoint->isBase){
+  else{
     b_vector[curjoint->jointID] = curjoint->S().dot(curjoint->wrench);
   }
   return curjoint->wrench;
+}
+
+
+//first part of ABA
+Joint::Inertial_body ABA1(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau, Eigen::Matrix3d rot){
+  //down path (compute acceleration)
+  rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
+
+  //For each body(link), find the COM and inertia in the world frame
+  //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the link object (unnecessary now, but keep for simplicity)
+  //Combine the links of the current joint into one composite body
+  rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
+  for(Link* childlink : curjoint->childlinks){
+    Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
+    childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
+    childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
+    composite = joinbodies(composite, childlink->RB());
+  }
+
+  //Compute spatial inertia matrix about the current joint
+  Eigen::MatrixXd spatialInertial(6, 6);
+  Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
+  spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
+  spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
+  spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
+  spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
+  curjoint->RB.M = spatialInertial;
+
+  //Compute fictious force vector
+  Eigen::VectorXd fictious_forces(6);
+  fictious_forces.head(3) << composite.m * skew(curjoint->w_ang_vel) * skew(curjoint->w_ang_vel) * r_ac;
+  fictious_forces.tail(3) << skew(curjoint->w_ang_vel) * (composite.I - (composite.m * skew(r_ac) * skew(r_ac))) * curjoint->w_ang_vel;
+  curjoint->RB.b = fictious_forces;
+
+  //For each joint, find the position, axis direction, and angular velocity in the world frame
+  //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
+  for(Joint* childjoint : curjoint->childjoints){
+    Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
+    childjoint->w_dir = R*childjoint->axis;
+    childjoint->w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
+    childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
+    if(childjoint->isRev){
+      childjoint->w_ang_vel = curjoint->w_ang_vel + gv(childjoint->jointID) * childjoint->w_dir; //angular velocity of rotating child frame
+    }
+    else if (childjoint->isPris){
+      childjoint->w_ang_vel = curjoint->w_ang_vel;
+    }
+  }
+
+  //initialize articulated body properties to rigid body properties
+  curjoint->AB = curjoint->RB;
+
+  //Compute articulated body inertia and bias for current joint
+  for (Joint* childjoint : curjoint->childjoints) {
+    //compute matrix Xbp and Xbp_dot
+    Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
+    Eigen::MatrixXd Xbp = getX(r_pb);
+    Eigen::MatrixXd Xbp_dot;
+    if(childjoint->isRev){
+      Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
+    }
+    else if(childjoint->isPris){
+      Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb) + childjoint->w_dir*gv(childjoint->jointID));
+    }
+    
+    ///RECURSION CALLED HERE///
+    Joint::Inertial_body childAB = ABA1(childjoint, gv, tau, rot);
+
+    //Shortform symbols for terms of AB inertia formula
+    Eigen::MatrixXd M = childAB.M;
+    Eigen::VectorXd b = childAB.b;
+    Eigen::MatrixXd XbpT = Xbp.transpose();
+    Eigen::MatrixXd Xbp_dotT = Xbp_dot.transpose();
+    Eigen::VectorXd S = childjoint->S();
+    Eigen::MatrixXd ST = S.transpose();
+    Eigen::VectorXd Sdot = childjoint->Sdot();
+    Eigen::VectorXd W = curjoint->getTwist();
+    size_t j = childjoint->jointID;
+
+    curjoint->AB.M += Xbp * M * (-S*(ST*M*S).inverse()*(ST*M*XbpT) + XbpT);
+    curjoint->AB.b += Xbp * (M*(S*(ST*M*S).inverse()*(tau.segment(j,1) - ST*M*(Sdot*gv.segment(j,1) + Xbp_dotT*W) - ST*b) + Sdot*gv.segment(j,1) + Xbp_dotT*W) + b);
+  }
+
+  return curjoint->AB;
+}
+
+//second part of ABA - only go down
+void ABA2(Joint* curjoint, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau, Eigen::VectorXd& udot){
+
+  //Recursively compute udot
+  if(curjoint->isBase){
+    curjoint->accel.set6D(curjoint->AB.M.inverse()*(tau.head(6) - curjoint->AB.b));
+    udot.head(6) << curjoint->accel.get6D();
+  }
+
+  ///Does tau include gravity?/// --no, gravity is not a force here
+
+  for (Joint* childjoint : curjoint->childjoints) {
+
+    //compute matrix Xbp and Xbp_dot
+    Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
+    Eigen::MatrixXd Xbp = getX(r_pb);
+    Eigen::MatrixXd Xbp_dot;
+    if(childjoint->isRev){
+      Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
+    }
+    else if(childjoint->isPris){
+      Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb) + childjoint->w_dir*gv(childjoint->jointID));
+    }
+
+    //Shortform symbols for terms of equation for udot
+    Eigen::MatrixXd M = childjoint->AB.M;
+    Eigen::VectorXd b = childjoint->AB.b;
+    Eigen::MatrixXd XbpT = Xbp.transpose();
+    Eigen::MatrixXd Xbp_dotT = Xbp_dot.transpose();
+    Eigen::VectorXd S = childjoint->S();
+    Eigen::MatrixXd ST = S.transpose();
+    Eigen::VectorXd Sdot = childjoint->Sdot();
+    Eigen::VectorXd W = curjoint->getTwist();
+    Eigen::VectorXd Wdot = curjoint->accel.get6D();
+    size_t j = childjoint->jointID;
+
+    udot[j] = ((ST*M*S).inverse() * (tau.segment(j,1) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - ST*b)).value();
+
+    childjoint->accel.set6D(S*udot(j) + Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot);
+
+    ABA2(childjoint, gv, tau, udot);
+  }
+}
+
+Eigen::VectorXd ABA(Joint* base, const Eigen::VectorXd &gv, const Eigen::VectorXd &tau){
+    //compute kinematics and dynamics down the tree needed to complete NE of each body except the force
+    //Compute M^A and b^A up the tree
+    Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
+    ABA1(base, gv, tau, rot);
+
+    //from the root to the leaves, compute udot and w
+    Eigen::VectorXd udot = Eigen::VectorXd::Zero(18);
+    ABA2(base, gv, tau, udot);
+    return udot;
 }
 
 void traverse_tree(Joint* curjoint){
@@ -398,9 +553,10 @@ void traverse_tree(Joint* curjoint){
 
 inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
   //PARAMETERS TO SET:
-    //For Joints: origin(xyz,rpy), isBase, isRev, isPris, parentJoint, childlinks, childjoints, jointID, axis, theta
+    //For Joints: origin(xyz,rpy), isBase, isFloating, isRev, isPris, parentJoint, childlinks, childjoints, jointID, axis, theta
     //**jointID is gv index, not gc index
     //jointID = gc index for fixed base, gc_index-1 for floating base
+    //For floating base, gc and gv for joints start from indices 7 and 6, respectively
     //For Links: origin, isLeaf, parentJoint, mass, inertia_b
   
   Joint base, link1Tolink2, link2Tolink3, link3Tolink4;
@@ -453,14 +609,35 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   link4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
   link4.isLeaf = true;
 
-  Answers answer;
-  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
+///END OF URDF
+
+  //set floating base orientation. Position is not important.
+  if(base.isFloating){
+    Eigen::Quaterniond q(gc[3], gc[4], gc[5], gc[6]);
+    Eigen::Matrix3d orientation = q.normalized().toRotationMatrix();
+    base.w_lin_vel = gv.segment(0,3);
+    base.w_ang_vel = gv.segment(3,3);
+    base.setRot(orientation);
+  }
+
+  //find the dof
+  int dof;
+  if(base.isFloating){
+    dof = gc.size()-1; //dim of gv is 1 less than dim of gc for floating base
+  }
+  else{
+    dof = gc.size(); //gc and gv have same dim for fixed base
+  }
+
+  //First, eliminate all fixed joint
   eliminate_fixed_joints(&base);
-  int dof = gc.size(); //gc and gv have same dim for fixed base
+
+  //Create container for answers
+  Answers answer;
 
   //CRBA
   Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(dof, dof);
-  CRBA(&base, rot, massMatrix);
+  CRBA(&base, Eigen::Matrix3d::Identity(), massMatrix);
   //fill in lower triangle of the mass matrix
   for (int i = 0; i < dof; i++) {
     for (int j = 0; j < i; j++) {
@@ -472,154 +649,29 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //RNE
   base.accel.lin << 0, 0, 9.81;
   Eigen::VectorXd b_vector = Eigen::VectorXd::Zero(dof);
-  rot = Eigen::Matrix3d::Identity();
-  RNE(&base, rot, gv, b_vector);
+  RNE(&base, Eigen::Matrix3d::Identity(), gv, b_vector);
   answer.nonlinearities = b_vector;
+
+  //ABA
+  Eigen::VectorXd result = ABA(&base, gv, gf);
+  result[2] -= 9.81;
+  answer.accel = result;
 
   return answer;
 }
 
-// //Set the size of placeholder vectors to DOF
-// inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
-//   Answers answer = computeSolution(gc, Eigen::VectorXd::Zero(gc.size()), Eigen::VectorXd::Zero(gc.size()));
-//   return answer.massmatrix;
-// }
-
-// inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
-//   Answers answer = computeSolution(gc, gv, Eigen::VectorXd::Zero(gc.size()));
-//   return answer.nonlinearities;
-// }
-
-
+//Set the size of placeholder vectors to DOF
 inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
-
-  Joint base, link1Tolink2, link2Tolink3, link3Tolink4;
-  Link link2, link3, link4;
-  
-  //first fixed joint is the base joint
-  base.isBase = true;
-  base.origin.xyz << 0.,0.,0.;
-  base.childjoints.push_back(&link1Tolink2);
-
-  link1Tolink2.parentJoint = &base;
-  link1Tolink2.origin.xyz << 0.,0.,0.3;
-  link1Tolink2.isRev = true;
-  link1Tolink2.axis << 1.,0.,0.;
-  link1Tolink2.theta = gc[0];
-  link1Tolink2.childlinks.push_back(&link2);
-  link1Tolink2.childjoints.push_back(&link2Tolink3);
-  link1Tolink2.jointID = 0;
-
-  link2.parentJoint = &link1Tolink2;
-  link2.origin.xyz << 0.,0.,0.2;
-  link2.mass = 1;
-  link2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-
-  link2Tolink3.parentJoint = &link1Tolink2;
-  link2Tolink3.origin.xyz << 0.,0.,0.3;
-  link2Tolink3.isRev = true;
-  link2Tolink3.axis << 1,0,0;
-  link2Tolink3.theta = gc[1];
-  link2Tolink3.childlinks.push_back(&link3);
-  link2Tolink3.childjoints.push_back(&link3Tolink4);
-  link2Tolink3.jointID = 1;
-
-  link3.parentJoint = &link2Tolink3;
-  link3.origin.xyz << 0.,0.,0.2;
-  link3.mass = 1;
-  link3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-
-  link3Tolink4.parentJoint = &link2Tolink3;
-  link3Tolink4.origin.xyz << 0,0,0.3;
-  link3Tolink4.isPris = true;
-  link3Tolink4.axis << 0,1,0;
-  link3Tolink4.theta = gc[2];
-  link3Tolink4.childlinks.push_back(&link4);
-  link3Tolink4.jointID = 2;
-
-  link4.parentJoint = &link3Tolink4;
-  link4.origin.xyz << 0.,0.,0.2;
-  link4.mass = 1;
-  link4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  link4.isLeaf = true;
-
-  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
-  eliminate_fixed_joints(&base);
-  int dof = gc.size(); //gc and gv have same dim for fixed base
-
-  //CRBA
-  Eigen::MatrixXd massMatrix = Eigen::MatrixXd::Zero(dof, dof);
-  CRBA(&base, rot, massMatrix);
-  //fill in lower triangle of the mass matrix
-  for (int i = 0; i < dof; i++) {
-    for (int j = 0; j < i; j++) {
-        massMatrix(i, j) = massMatrix(j, i);
-    }
-  }
-  return massMatrix;
+  Answers answer = computeSolution(gc, Eigen::VectorXd::Zero(99), Eigen::VectorXd::Zero(99));
+  return answer.massmatrix;
 }
 
 inline Eigen::VectorXd getNonlinearities (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv) {
+  Answers answer = computeSolution(gc, gv, Eigen::VectorXd::Zero(99));
+  return answer.nonlinearities;
+}
 
-  Joint base, link1Tolink2, link2Tolink3, link3Tolink4;
-  Link link2, link3, link4;
-  
-  //first fixed joint is the base joint
-  base.isBase = true;
-  base.origin.xyz << 0.,0.,0.;
-  base.childjoints.push_back(&link1Tolink2);
-
-  link1Tolink2.parentJoint = &base;
-  link1Tolink2.origin.xyz << 0.,0.,0.3;
-  link1Tolink2.isRev = true;
-  link1Tolink2.axis << 1.,0.,0.;
-  link1Tolink2.theta = gc[0];
-  link1Tolink2.childlinks.push_back(&link2);
-  link1Tolink2.childjoints.push_back(&link2Tolink3);
-  link1Tolink2.jointID = 0;
-
-  link2.parentJoint = &link1Tolink2;
-  link2.origin.xyz << 0.,0.,0.2;
-  link2.mass = 1;
-  link2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-
-  link2Tolink3.parentJoint = &link1Tolink2;
-  link2Tolink3.origin.xyz << 0.,0.,0.3;
-  link2Tolink3.isRev = true;
-  link2Tolink3.axis << 1,0,0;
-  link2Tolink3.theta = gc[1];
-  link2Tolink3.childlinks.push_back(&link3);
-  link2Tolink3.childjoints.push_back(&link3Tolink4);
-  link2Tolink3.jointID = 1;
-
-  link3.parentJoint = &link2Tolink3;
-  link3.origin.xyz << 0.,0.,0.2;
-  link3.mass = 1;
-  link3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-
-  link3Tolink4.parentJoint = &link2Tolink3;
-  link3Tolink4.origin.xyz << 0,0,0.3;
-  link3Tolink4.isPris = true;
-  link3Tolink4.axis << 0,1,0;
-  link3Tolink4.theta = gc[2];
-  link3Tolink4.childlinks.push_back(&link4);
-  link3Tolink4.jointID = 2;
-
-  link4.parentJoint = &link3Tolink4;
-  link4.origin.xyz << 0.,0.,0.2;
-  link4.mass = 1;
-  link4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  link4.isLeaf = true;
-
-  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
-  eliminate_fixed_joints(&base);
-  int dof = gc.size(); //gc and gv have same dim for fixed base
-
-  //RNE
-  base.accel.lin << 0, 0, 9.81;
-  Eigen::VectorXd b_vector = Eigen::VectorXd::Zero(dof);
-  rot = Eigen::Matrix3d::Identity();
-  RNE(&base, rot, gv, b_vector);
-
-  return b_vector;
+inline Eigen::VectorXd computeGeneralizedAcceleration (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
+  Answers answer = computeSolution(gc, gv, gf);
+  return answer.accel;
 }
