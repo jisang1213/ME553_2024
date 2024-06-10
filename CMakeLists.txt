@@ -10,8 +10,9 @@ include(cmake/helper.cmake)
 #create_executable(CRBA src/exercise3.cpp)
 #create_executable(RNE src/exercise4.cpp)
 #create_executable(ABA src/exercise5.cpp)
-create_executable(tester src/tester.cpp)
-create_executable(fixed src/fixed_tester.cpp)
+create_executable(anymal src/anymal.cpp)
+create_executable(arm src/arm.cpp)
+create_executable(debug src/debug.cpp)
 
 # examples
 #create_executable(rotation_example_angle_axis src/rotation_example_angle_axis.cpp)

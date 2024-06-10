@@ -3,7 +3,7 @@
 //
 
 #include "raisim/RaisimServer.hpp"
-#include "Algorithms.hpp"
+#include "Algorithms_combined.hpp"
 
 #define _MAKE_STR(x) __MAKE_STR(x)
 #define __MAKE_STR(x) #x
@@ -16,7 +16,6 @@ int main(int argc, char* argv[]) {
 
   // anymal
   auto anymal = world.addArticulatedSystem(std::string(_MAKE_STR(RESOURCE_DIR)) + "/anymal_c/urdf/anymal.urdf");
-///2DrobotArm/robot_3D.urdf
 
   // anymal configuration
   Eigen::VectorXd gc(anymal->getGeneralizedCoordinateDim()), gv(anymal->getDOF()), gf(anymal->getDOF());
@@ -29,7 +28,7 @@ int main(int argc, char* argv[]) {
     anymal->setState(gc, gv);
     anymal->setGeneralizedForce(gf);
 
-    // /// if you are using an old version of Raisim, you need this line
+    /// if you are using an old version of Raisim, you need this line
     world.integrate1();
     anymal->getMassMatrix();
 
