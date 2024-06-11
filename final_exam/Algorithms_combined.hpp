@@ -190,6 +190,7 @@ class Link : public Kinematic_tree{
     Eigen::Matrix3d inertia_b, inertia_w;
     Eigen::Vector3d COM; //com in world frame
     double mass=0;
+    bool virtual_link = false;
 
     rigidbody RB(){
       return rigidbody{inertia_w, COM, mass};
@@ -239,31 +240,6 @@ class ArticulatedSystem{
     void addlink(Link* link){
       links.push_back(link);
     }
-    void makeTree(){
-      //connect all links to joints and joints to links
-      for(Joint* joint : joints){
-        for(Link* link : links){
-          if(joint->childlink == link->name){
-            joint->childlinks.push_back(link);
-            link->parentJoint = joint;
-          }
-        }
-      }
-      //connect all child and parent joints
-      for(Joint* joint : joints){
-        for(Link* link : links){
-          if(joint->parentlink == link->name){
-            joint->parentJoint = link->parentJoint;
-            joint->parentJoint->childjoints.push_back(joint);
-          }
-        }
-      }
-      //initialize gc,gv,gf
-      if(floating)  gc = Eigen::VectorXd::Zero(dof+1);
-      else  gc = Eigen::VectorXd::Zero(dof);
-      gv = Eigen::VectorXd::Zero(dof);
-      gf = Eigen::VectorXd::Zero(dof);
-    }
     void setState(Eigen::VectorXd generalizedCoordinate, Eigen::VectorXd generalizedVelocity){
       gc = generalizedCoordinate;
       gv = generalizedVelocity;
@@ -276,13 +252,8 @@ class ArticulatedSystem{
         root->w_ang_vel = gv.segment(3,3);
         root->setRot(orientation);
       }
-
-      traverse(root);
-
+      makeTree();
       eliminate_fixed_joints(root);
-
-      traverse(root);
-
     }
     void setGeneralizedForce(Eigen::VectorXd generalizedForce){
       gf = generalizedForce;
@@ -311,6 +282,7 @@ class ArticulatedSystem{
     }
     Eigen::VectorXd computeGeneralizedAcceleration() const{
       //ABA
+      root->accel.lin << 0, 0, 9.81;    //DOUBLE CHECK
       Eigen::VectorXd acceleration = ABA(root);
       if(floating){
         acceleration[2] -= 9.81;
@@ -319,6 +291,33 @@ class ArticulatedSystem{
     }
 
   private:
+    void makeTree(){
+      //connect all links to joints and joints to links
+      for(Joint* joint : joints){
+        joint->childjoints.clear();
+        joint->childlinks.clear();
+        for(Link* link : links){
+          if(joint->childlink == link->name){
+            if(!link->virtual_link) joint->childlinks.push_back(link);
+            link->parentJoint = joint;
+          }
+        }
+      }
+      //connect all child and parent joints
+      for(Joint* joint : joints){
+        for(Link* link : links){
+          if(joint->parentlink == link->name){
+            joint->parentJoint = link->parentJoint;
+            joint->parentJoint->childjoints.push_back(joint);
+          }
+        }
+      }
+      // //initialize gc,gv,gf
+      // if(floating)  gc = Eigen::VectorXd::Zero(dof+1);
+      // else  gc = Eigen::VectorXd::Zero(dof);
+      // gv = Eigen::VectorXd::Zero(dof);
+      // gf = Eigen::VectorXd::Zero(dof);
+    }
     //function to eliminate all fixed joints
     void eliminate_fixed_joints(Joint* curjoint){
       //down path
@@ -389,10 +388,10 @@ class ArticulatedSystem{
       rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
       for (Joint* childjoint : curjoint->childjoints) {
         rigidbody jointRB = CRBA(childjoint, rot, massmatrix);    //CRBA() called here
-        composite = joinbodies(composite, jointRB);
+        if(jointRB.m != 0) composite = joinbodies(composite, jointRB);
       }
       for(Link* childlink : curjoint->childlinks){
-        composite = joinbodies(composite, childlink->RB());
+        if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
       }
 
       //up path
@@ -475,7 +474,6 @@ class ArticulatedSystem{
           + skew(curjoint->w_ang_vel)*childjoint->w_dir*gv(childjoint->jointID);
         }
       }
-std::cout<<"CP2"<<std::endl;
       //recursively call RNE for each child joint to get the net wrench at the current joint due to the reaction at child joints
       Eigen::VectorXd wrench = Eigen::VectorXd::Zero(6);  //net wrench about current joint
       for (Joint* childjoint : curjoint->childjoints) {
@@ -492,9 +490,8 @@ std::cout<<"CP2"<<std::endl;
       //Combine the links of the current joint into one composite body
       rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
       for(Link* childlink : curjoint->childlinks){
-        composite = joinbodies(composite, childlink->RB());
+        if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
       }
-std::cout<<"CP3"<<std::endl;
       //up path
       //Compute spatial inertia matrix about the current joint
       Eigen::MatrixXd spatialInertial(6, 6);
@@ -515,12 +512,10 @@ std::cout<<"CP3"<<std::endl;
       if(curjoint->isBase){
         if(curjoint->isFloating){
           //for floating base
-          std::cout<<"CP4"<<std::endl;
           b_vector.head(6) << curjoint->wrench;
         }
       }
       else{
-        std::cout<<"CP5"<<std::endl;
         //find transmitted generalized force
         b_vector[curjoint->jointID] = curjoint->S().dot(curjoint->wrench);
       }
@@ -540,7 +535,7 @@ std::cout<<"CP3"<<std::endl;
         Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
         childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
         childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
-        composite = joinbodies(composite, childlink->RB());
+        if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
       }
 
       //Compute spatial inertia matrix about the current joint
@@ -571,6 +566,7 @@ std::cout<<"CP3"<<std::endl;
         else if (childjoint->isPris){
           childjoint->w_ang_vel = curjoint->w_ang_vel;
         }
+        childjoint->w_lin_vel = curjoint->w_lin_vel + curjoint->w_ang_vel.cross(childjoint->w_pos - curjoint->w_pos);
       }
 
       //initialize articulated body properties to rigid body properties
@@ -605,6 +601,7 @@ std::cout<<"CP3"<<std::endl;
 
         curjoint->AB.M += Xbp * M * (-S*(ST*M*S).inverse()*(ST*M*XbpT) + XbpT);
         curjoint->AB.b += Xbp * (M*(S*(ST*M*S).inverse()*(gf.segment(j,1) - ST*M*(Sdot*gv.segment(j,1) + Xbp_dotT*W) - ST*b) + Sdot*gv.segment(j,1) + Xbp_dotT*W) + b);
+      
       }
 
       return curjoint->AB;
@@ -614,13 +611,12 @@ std::cout<<"CP3"<<std::endl;
     void ABA2(Joint* curjoint, Eigen::VectorXd& udot) const{
 
       //Recursively compute udot
-      if(floating && curjoint->isBase){
+      if(curjoint->isFloating){
         curjoint->accel.set6D(curjoint->AB.M.inverse()*(gf.head(6) - curjoint->AB.b));
         udot.head(6) << curjoint->accel.get6D();
       }
 
       for (Joint* childjoint : curjoint->childjoints) {
-
         //compute matrix Xbp and Xbp_dot
         Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
         Eigen::MatrixXd Xbp = getX(r_pb);
@@ -671,11 +667,13 @@ std::cout<<"CP3"<<std::endl;
 inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
   //PARAMETERS TO SET:
     //For Joints: origin(xyz,rpy), isBase, isFloating, isRev, isPris, axis
-    //For Links: name, origin, mass, inertia_b
+    //For Links: name, origin, mass, inertia_b, virtual
 
-  ArticulatedSystem robot;
-  Joint j1, j2, j3, j4;
-  Link l1, l2, l3, l4;
+  Answers answer;
+
+  ArticulatedSystem anymal, arm;
+  Joint j1, j2, j3, J1, J2, J3, J4;
+  Link l1, l2, l3, L1, L2, L3, L4;
   
   //first fixed joint is the base joint - it has no parent link
   //joints and links must be added in order in URDF, starting with base joint
@@ -683,11 +681,10 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   j1.isBase = true;
   j1.isFloating = true;
   j1.childlink = "base";
-  j1.childjoints.push_back(&j2);
-  j1.childlinks.push_back(&l1);
 
   l1.name = "base";
-  l1.parentJoint = &j1;
+  l1.mass = 2;
+  l1.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
 
   j2.isRev = true;
   j2.axis << 1,0,0;
@@ -695,94 +692,88 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   j2.childlink = "LF_HAA";
   j2.origin.rpy << 2.61799387799, 0, 0.0;
   j2.origin.xyz << 0.2999, 0.104, 0.0;
-  j2.parentJoint = &j1;
-  j2.childjoints.push_back(&j3);
-  j2.childlinks.push_back(&l2);
 
-  l2.parentJoint = &j2;
   l2.name = "LF_HAA";
   l2.origin.xyz << -0.063, 7e-05, 0.00046;
   l2.mass = 2.04;
-  l2.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
+  l2.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
 
   j3.isRev = true;
   j3.parentlink = "LF_HAA";
   j3.childlink = "LF_HIP";
   j3.axis << 1,0,0;
-  j3.parentJoint = &j2;
-  j3.childlinks.push_back(&l3);
 
   l3.name = "LF_HIP";
-  l3.mass = 0.001;
-  l3.inertia_b = inertia_tensor(0.000001, 0.0, 0.0, 0.000001, 0.0, 0.000001);
-  l3.parentJoint = &j3;
+  l3.mass = 0.01;
+  l3.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
 
-  robot.addjoint(&j1);
-  robot.addlink(&l1);
-  robot.addjoint(&j2);
-  robot.addlink(&l2);
-  robot.addjoint(&j3);
-  robot.addlink(&l3);
-  
+  anymal.addjoint(&j1);
+  anymal.addlink(&l1);
+  anymal.addjoint(&j2);
+  anymal.addlink(&l2);
+  anymal.addjoint(&j3);
+  anymal.addlink(&l3);
     
   //URDF FOR /2DrobotArm/robot_3D.urdf
-  // j1.isBase = true;
-  // j1.childlink = "link1";
-  // robot.addjoint(&j1);
+  J1.isBase = true;
+  J1.childlink = "link1";
+  arm.addjoint(&J1);
 
-  // l1.name = "link1";
-  // robot.addlink(&l1);
+  L1.name = "link1";
+  arm.addlink(&L1);
 
-  // j2.parentlink = "link1";
-  // j2.childlink = "link2";
-  // j2.origin.xyz << 0.,0.,0.3;
-  // j2.isRev = true;
-  // j2.axis << 1,0,0;
-  // robot.addjoint(&j2);
+  J2.parentlink = "link1";
+  J2.childlink = "link2";
+  J2.origin.xyz << 0.,0.,0.3;
+  J2.isRev = true;
+  J2.axis << 1,0,0;
+  arm.addjoint(&J2);
 
-  // l2.name = "link2";
-  // l2.origin.xyz << 0,0,0.2;
-  // l2.mass = 1;
-  // l2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  // robot.addlink(&l2);
+  L2.name = "link2";
+  L2.origin.xyz << 0,0,0.2;
+  L2.mass = 1;
+  L2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  arm.addlink(&L2);
 
-  // j3.parentlink = "link2";
-  // j3.childlink = "link3";
-  // j3.origin.xyz << 0,0,0.3;
-  // j3.isRev = true;
-  // j3.axis << 1,0,0;
-  // robot.addjoint(&j3);
+  J3.parentlink = "link2";
+  J3.childlink = "link3";
+  J3.origin.xyz << 0,0,0.3;
+  J3.isRev = true;
+  J3.axis << 1,0,0;
+  arm.addjoint(&J3);
 
-  // l3.name = "link3";
-  // l3.origin.xyz << 0,0,0.2;
-  // l3.mass = 1;
-  // l3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  // robot.addlink(&l3);
+  L3.name = "link3";
+  L3.origin.xyz << 0,0,0.2;
+  L3.mass = 1;
+  L3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  arm.addlink(&L3);
 
-  // j4.parentlink = "link3";
-  // j4.childlink = "link4";
-  // j4.origin.xyz << 0,0,0.3;
-  // j4.isPris = true;
-  // j4.axis << 0,1,0;
-  // robot.addjoint(&j4);
+  J4.parentlink = "link3";
+  J4.childlink = "link4";
+  J4.origin.xyz << 0,0,0.3;
+  J4.isPris = true;
+  J4.axis << 0,1,0;
+  arm.addjoint(&J4);
 
-  // l4.name = "link4";
-  // l4.origin.xyz << 0.,0.,0.2;
-  // l4.mass = 1;
-  // l4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  // robot.addlink(&l4);
+  L4.name = "link4";
+  L4.origin.xyz << 0.,0.,0.2;
+  L4.mass = 1;
+  L4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  arm.addlink(&L4);
 
-  //connect all joints and links
-  //robot.makeTree();
+  // //set gc,gv,gf of anymal
+  // anymal.setState(gc, gv);
+  // anymal.setGeneralizedForce(gf);
+  // answer.massmatrix = anymal.getMassMatrix();
+  // answer.nonlinearities = anymal.getNonlinearities();
+  // answer.accel = anymal.computeGeneralizedAcceleration();
 
-  //set gc,gv,gf
-  robot.setState(gc, gv); //this can only be called once in this scope for now since this also calls eliminate_fixed_joints()
-  robot.setGeneralizedForce(gf);
-
-  Answers answer;
-  answer.massmatrix = robot.getMassMatrix();
-  answer.nonlinearities = robot.getNonlinearities();
-  answer.accel = robot.computeGeneralizedAcceleration();
+  //set gc,gv,gf of arm
+  arm.setState(gc, gv);
+  arm.setGeneralizedForce(gf);
+  answer.massmatrix = arm.getMassMatrix();
+  answer.nonlinearities = arm.getNonlinearities();
+  answer.accel = arm.computeGeneralizedAcceleration();
 
   return answer;
 }

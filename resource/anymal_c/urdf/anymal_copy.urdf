@@ -6,12 +6,10 @@
 <robot name="anymal">
     <!-- Base link -->
     <link name="base">
-        <visual>
-            <origin rpy="0 0 0" xyz="0 0 0"/>
-            <geometry>
-                <mesh filename="package://anymal_c_simple_description/meshes/base.dae" scale="1.0 1.0 1.0"/>
-            </geometry>
-        </visual>
+        <inertial>
+            <mass value="2"/>
+            <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+        </inertial>
     </link>
     
     <!-- joint base HAA -->
@@ -26,7 +24,7 @@
         <inertial>
             <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
             <mass value="2.04"/>
-            <inertia ixx="0.001053013" ixy="4.527e-05" ixz="8.855e-05" iyy="0.001805509" iyz="9.909e-05" izz="0.001765827"/>
+            <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
         </inertial>
     </link>
     <!-- joint Drive output -->
@@ -42,8 +40,8 @@
     <link name="LF_HIP">
         <inertial>
             <origin rpy="0 0 0" xyz="0 0 0"/>
-            <mass value="0.001"/>
-            <inertia ixx="0.000001" ixy="0.0" ixz="0.0" iyy="0.000001" iyz="0.0" izz="0.000001"/>
+            <mass value="0.01"/>
+            <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
         </inertial>
     </link>
 </robot>

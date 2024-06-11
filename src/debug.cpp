@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
   gv << 0.4, 0.5, 0.6;
   gf << 0.7, 0.8, 0.9;
 
-  for(int i=0; i<5; i++){
+  for(int i=0; i<1; i++){
 
     //change gc,gv,gf randomly
     gc *= 1.3;
