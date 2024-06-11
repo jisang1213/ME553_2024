@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =================================================================================== -->
+<!--   Copyright 2020 ANYbotics, https://www.anybotics.com                               -->
+<!-- =================================================================================== -->
+<!-- This file contains the description of the ANYmal C robot. -->
+<robot name="anymal">
+    <!-- Base link -->
+    <link name="base">
+        <visual>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <geometry>
+                <mesh filename="package://anymal_c_simple_description/meshes/base.dae" scale="1.0 1.0 1.0"/>
+            </geometry>
+        </visual>
+    </link>
+    
+    <!-- joint base HAA -->
+    <joint name="base_LF_HAA" type="revolute">
+        <parent link="base"/>
+        <child link="LF_HAA"/>
+        <axis xyz="1 0 0"/>
+        <origin rpy="2.61799387799 0 0.0" xyz="0.2999 0.104 0.0"/>
+    </joint>
+    <!-- Drive link -->
+    <link name="LF_HAA">
+        <inertial>
+            <origin rpy="0 0 0" xyz="-0.063 7e-05 0.00046"/>
+            <mass value="2.04"/>
+            <inertia ixx="0.001053013" ixy="4.527e-05" ixz="8.855e-05" iyy="0.001805509" iyz="9.909e-05" izz="0.001765827"/>
+        </inertial>
+    </link>
+    <!-- joint Drive output -->
+    <joint name="LF_HAA" type="revolute">
+        <parent link="LF_HAA"/>
+        <child link="LF_HIP"/>
+        <origin rpy="0 0 0" xyz="0 0 0"/>
+        <axis xyz="1 0 0"/>
+        <limit effort="80.0" lower="-0.72" upper="0.49" velocity="7.5"/>
+        <dynamics damping="0.0" friction="0.0"/>
+    </joint>
+    <!-- Drive output link -->
+    <link name="LF_HIP">
+        <inertial>
+            <origin rpy="0 0 0" xyz="0 0 0"/>
+            <mass value="0.001"/>
+            <inertia ixx="0.000001" ixy="0.0" ixz="0.0" iyy="0.000001" iyz="0.0" izz="0.000001"/>
+        </inertial>
+    </link>
+</robot>

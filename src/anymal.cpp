@@ -15,12 +15,13 @@ int main(int argc, char* argv[]) {
   raisim::World world; // physics world
 
   // anymal
-  auto anymal = world.addArticulatedSystem(std::string(_MAKE_STR(RESOURCE_DIR)) + "/anymal_c/urdf/anymal.urdf");
+  auto anymal = world.addArticulatedSystem(std::string(_MAKE_STR(RESOURCE_DIR)) + "/anymal_c/urdf/anymal_copy.urdf");
+
 
   // anymal configuration
   Eigen::VectorXd gc(anymal->getGeneralizedCoordinateDim()), gv(anymal->getDOF()), gf(anymal->getDOF());
 
-  for(int i=0; i<100; i++){
+  for(int i=0; i<1; i++){
     gc = Eigen::VectorXd::Random(anymal->getGeneralizedCoordinateDim());
     gv = Eigen::VectorXd::Random(anymal->getDOF());
     gf = Eigen::VectorXd::Random(anymal->getDOF());

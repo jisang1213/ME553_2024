@@ -201,13 +201,21 @@ class Link : public Kinematic_tree{
     }
 };
 
+//for debugging
+void traverse(Joint* joint){
+  std::cout << "current joint:" << joint->jointID << std::endl;
+  for(Joint* child : joint->childjoints){
+    traverse(child);
+  }
+};
+
 class ArticulatedSystem{
   private:
     std::vector<Joint*> joints;
     std::vector<Link*> links;
     Joint* root;
     bool floating = false;
-    int dof, gc_index=0, gv_index=0;
+    int dof=0, gc_index=0, gv_index=0;
     Eigen::VectorXd gc, gv, gf;
 
   public:
@@ -215,11 +223,16 @@ class ArticulatedSystem{
       if(joint->isBase){
         root = joint;
         floating = joint->isFloating;
-        if(floating){gc_index+=7; gv_index+=6;}
+        if(floating){
+          gc_index+=7; gv_index+=6; dof+=6;
+        }
       }
       if(joint->isRev || joint->isPris){
-        joint->gc_idx = gc_index++;
-        joint->jointID = gv_index++;
+        joint->gc_idx = gc_index;
+        joint->jointID = gv_index;
+        gc_index++;
+        gv_index++;
+        dof++;
       }
       joints.push_back(joint);
     }
@@ -227,7 +240,6 @@ class ArticulatedSystem{
       links.push_back(link);
     }
     void makeTree(){
-      dof=0;
       //connect all links to joints and joints to links
       for(Joint* joint : joints){
         for(Link* link : links){
@@ -236,8 +248,6 @@ class ArticulatedSystem{
             link->parentJoint = joint;
           }
         }
-        if(joint->isFloating) dof+=6;
-        if(joint->isRev || joint->isPris) dof+=1;
       }
       //connect all child and parent joints
       for(Joint* joint : joints){
@@ -266,7 +276,13 @@ class ArticulatedSystem{
         root->w_ang_vel = gv.segment(3,3);
         root->setRot(orientation);
       }
+
+      traverse(root);
+
       eliminate_fixed_joints(root);
+
+      traverse(root);
+
     }
     void setGeneralizedForce(Eigen::VectorXd generalizedForce){
       gf = generalizedForce;
@@ -296,7 +312,9 @@ class ArticulatedSystem{
     Eigen::VectorXd computeGeneralizedAcceleration() const{
       //ABA
       Eigen::VectorXd acceleration = ABA(root);
-      acceleration[2] -= 9.81;
+      if(floating){
+        acceleration[2] -= 9.81;
+      }
       return acceleration;
     }
 
@@ -419,7 +437,7 @@ class ArticulatedSystem{
     Eigen::VectorXd RNE(Joint* curjoint, Eigen::Matrix3d rot, Eigen::VectorXd& b_vector) const{
       //down path (compute acceleration)
       rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
-
+      
       //For each body(link), find the COM and inertia in the world frame
       //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the link object
       for(Link* childlink : curjoint->childlinks){
@@ -457,7 +475,7 @@ class ArticulatedSystem{
           + skew(curjoint->w_ang_vel)*childjoint->w_dir*gv(childjoint->jointID);
         }
       }
-
+std::cout<<"CP2"<<std::endl;
       //recursively call RNE for each child joint to get the net wrench at the current joint due to the reaction at child joints
       Eigen::VectorXd wrench = Eigen::VectorXd::Zero(6);  //net wrench about current joint
       for (Joint* childjoint : curjoint->childjoints) {
@@ -476,7 +494,7 @@ class ArticulatedSystem{
       for(Link* childlink : curjoint->childlinks){
         composite = joinbodies(composite, childlink->RB());
       }
-
+std::cout<<"CP3"<<std::endl;
       //up path
       //Compute spatial inertia matrix about the current joint
       Eigen::MatrixXd spatialInertial(6, 6);
@@ -497,10 +515,12 @@ class ArticulatedSystem{
       if(curjoint->isBase){
         if(curjoint->isFloating){
           //for floating base
+          std::cout<<"CP4"<<std::endl;
           b_vector.head(6) << curjoint->wrench;
         }
       }
       else{
+        std::cout<<"CP5"<<std::endl;
         //find transmitted generalized force
         b_vector[curjoint->jointID] = curjoint->S().dot(curjoint->wrench);
       }
@@ -594,12 +614,10 @@ class ArticulatedSystem{
     void ABA2(Joint* curjoint, Eigen::VectorXd& udot) const{
 
       //Recursively compute udot
-      if(curjoint->isBase){
+      if(floating && curjoint->isBase){
         curjoint->accel.set6D(curjoint->AB.M.inverse()*(gf.head(6) - curjoint->AB.b));
         udot.head(6) << curjoint->accel.get6D();
       }
-
-      ///Does tau include gravity?/// --no, gravity is not a force here
 
       for (Joint* childjoint : curjoint->childjoints) {
 
@@ -627,7 +645,6 @@ class ArticulatedSystem{
         size_t j = childjoint->jointID;
 
         udot[j] = ((ST*M*S).inverse() * (gf.segment(j,1) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - ST*b)).value();
-
         childjoint->accel.set6D(S*udot(j) + Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot);
 
         ABA2(childjoint, udot);
@@ -641,7 +658,7 @@ class ArticulatedSystem{
       ABA1(base, rot);
 
       //from the root to the leaves, compute udot and w
-      Eigen::VectorXd udot = Eigen::VectorXd::Zero(18);
+      Eigen::VectorXd udot = Eigen::VectorXd::Zero(dof);
       ABA2(base, udot);
       return udot;
     }
@@ -653,8 +670,8 @@ class ArticulatedSystem{
 
 inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd& gv, const Eigen::VectorXd& gf) {
   //PARAMETERS TO SET:
-    //For Joints: origin(xyz,rpy), isBase, isFloating, isRev, isPris, parentJoint, childlinks, childjoints, axis
-    //For Links: origin, parentJoint, mass, inertia_b
+    //For Joints: origin(xyz,rpy), isBase, isFloating, isRev, isPris, axis
+    //For Links: name, origin, mass, inertia_b
 
   ArticulatedSystem robot;
   Joint j1, j2, j3, j4;
@@ -663,55 +680,100 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   //first fixed joint is the base joint - it has no parent link
   //joints and links must be added in order in URDF, starting with base joint
 
-  //URDF FOR /2DrobotArm/robot_3D.urdf
   j1.isBase = true;
-  j1.childlink = "link1";
-  robot.addjoint(&j1);
+  j1.isFloating = true;
+  j1.childlink = "base";
+  j1.childjoints.push_back(&j2);
+  j1.childlinks.push_back(&l1);
 
-  l1.name = "link1";
-  robot.addlink(&l1);
+  l1.name = "base";
+  l1.parentJoint = &j1;
 
-  j2.parentlink = "link1";
-  j2.childlink = "link2";
-  j2.origin.xyz << 0.,0.,0.3;
   j2.isRev = true;
   j2.axis << 1,0,0;
-  robot.addjoint(&j2);
+  j2.parentlink = "base";
+  j2.childlink = "LF_HAA";
+  j2.origin.rpy << 2.61799387799, 0, 0.0;
+  j2.origin.xyz << 0.2999, 0.104, 0.0;
+  j2.parentJoint = &j1;
+  j2.childjoints.push_back(&j3);
+  j2.childlinks.push_back(&l2);
 
-  l2.name = "link2";
-  l2.origin.xyz << 0,0,0.2;
-  l2.mass = 1;
-  l2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  robot.addlink(&l2);
+  l2.parentJoint = &j2;
+  l2.name = "LF_HAA";
+  l2.origin.xyz << -0.063, 7e-05, 0.00046;
+  l2.mass = 2.04;
+  l2.inertia_b = inertia_tensor(0.001053013, 4.527e-05, 8.855e-05, 0.001805509, 9.909e-05, 0.001765827);
 
-  j3.parentlink = "link2";
-  j3.childlink = "link3";
-  j3.origin.xyz << 0,0,0.3;
   j3.isRev = true;
+  j3.parentlink = "LF_HAA";
+  j3.childlink = "LF_HIP";
   j3.axis << 1,0,0;
+  j3.parentJoint = &j2;
+  j3.childlinks.push_back(&l3);
+
+  l3.name = "LF_HIP";
+  l3.mass = 0.001;
+  l3.inertia_b = inertia_tensor(0.000001, 0.0, 0.0, 0.000001, 0.0, 0.000001);
+  l3.parentJoint = &j3;
+
+  robot.addjoint(&j1);
+  robot.addlink(&l1);
+  robot.addjoint(&j2);
+  robot.addlink(&l2);
   robot.addjoint(&j3);
-
-  l3.name = "link3";
-  l3.origin.xyz << 0,0,0.2;
-  l3.mass = 1;
-  l3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
   robot.addlink(&l3);
+  
+    
+  //URDF FOR /2DrobotArm/robot_3D.urdf
+  // j1.isBase = true;
+  // j1.childlink = "link1";
+  // robot.addjoint(&j1);
 
-  j4.parentlink = "link3";
-  j4.childlink = "link4";
-  j4.origin.xyz << 0,0,0.3;
-  j4.isPris = true;
-  j4.axis << 0,1,0;
-  robot.addjoint(&j4);
+  // l1.name = "link1";
+  // robot.addlink(&l1);
 
-  l4.name = "link4";
-  l4.origin.xyz << 0.,0.,0.2;
-  l4.mass = 1;
-  l4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
-  robot.addlink(&l4);
+  // j2.parentlink = "link1";
+  // j2.childlink = "link2";
+  // j2.origin.xyz << 0.,0.,0.3;
+  // j2.isRev = true;
+  // j2.axis << 1,0,0;
+  // robot.addjoint(&j2);
+
+  // l2.name = "link2";
+  // l2.origin.xyz << 0,0,0.2;
+  // l2.mass = 1;
+  // l2.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  // robot.addlink(&l2);
+
+  // j3.parentlink = "link2";
+  // j3.childlink = "link3";
+  // j3.origin.xyz << 0,0,0.3;
+  // j3.isRev = true;
+  // j3.axis << 1,0,0;
+  // robot.addjoint(&j3);
+
+  // l3.name = "link3";
+  // l3.origin.xyz << 0,0,0.2;
+  // l3.mass = 1;
+  // l3.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  // robot.addlink(&l3);
+
+  // j4.parentlink = "link3";
+  // j4.childlink = "link4";
+  // j4.origin.xyz << 0,0,0.3;
+  // j4.isPris = true;
+  // j4.axis << 0,1,0;
+  // robot.addjoint(&j4);
+
+  // l4.name = "link4";
+  // l4.origin.xyz << 0.,0.,0.2;
+  // l4.mass = 1;
+  // l4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  // robot.addlink(&l4);
 
   //connect all joints and links
-  robot.makeTree();
+  //robot.makeTree();
 
   //set gc,gv,gf
   robot.setState(gc, gv); //this can only be called once in this scope for now since this also calls eliminate_fixed_joints()
@@ -725,7 +787,6 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   return answer;
 }
 
-//Set the size of placeholder vectors to DOF
 inline Eigen::MatrixXd getMassMatrix (const Eigen::VectorXd& gc) {
   Answers answer = computeSolution(gc, Eigen::VectorXd::Zero(99), Eigen::VectorXd::Zero(99));
   return answer.massmatrix;
