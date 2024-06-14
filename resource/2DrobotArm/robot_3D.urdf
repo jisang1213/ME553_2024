@@ -59,7 +59,7 @@
         </inertial>
     </link>
 
-    <joint name="link3Tolink4" type="prismatic">
+    <joint name="link3Tolink4" type="revolute">
         <parent link="link3"/>
         <child link="link4"/>
         <origin xyz="0 0 0.3"/>
@@ -67,17 +67,25 @@
     </joint>
 
     <link name="link4">
-        <visual>
-            <origin rpy="0 0 0" xyz="0 0 0.2"/>
-            <geometry>
-                <cylinder length="0.2" radius="0.02"/>
-            </geometry>
-        </visual>
         <inertial>
             <origin rpy="0 0 0" xyz="0.0 0.0 0.2"/>
             <mass value="1"/>
             <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
         </inertial>
     </link>
-    
+
+    <joint name="link3Tolink5" type="prismatic">
+        <parent link="link3"/>
+        <child link="link5"/>
+        <origin xyz="0 0 0.3"/>
+        <axis xyz="0 1 0"/>
+    </joint>
+
+    <link name="link5">
+        <inertial>
+            <origin rpy="0 0 0" xyz="0.0 0.0 0.2"/>
+            <mass value="1"/>
+            <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+        </inertial>
+    </link>
 </robot>
