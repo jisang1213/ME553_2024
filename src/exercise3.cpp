@@ -29,6 +29,7 @@ int main(int argc, char* argv[]) {
   world.integrate1();
 
   std::cout<<"mass matrix should be \n"<< anymal->getMassMatrix().e()<<std::endl;
+  std::cout<<"inverse is\n"<< anymal->getMassMatrix().e().inverse()<<std::endl;
 
   Eigen::MatrixXd result = getMassMatrix(gc);
   double error = (result - anymal->getMassMatrix().e()).norm();

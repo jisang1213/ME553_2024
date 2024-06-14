@@ -1,3 +1,7 @@
+// Author: Jisang You
+// Date: June 13, 2024
+// Description: Header file for Articulated System Algorithms
+
 #pragma once
 
 #include <Eigen/Core>
@@ -6,8 +10,7 @@
 #include <string>
 #include <iostream>
 
-/*CODE SUMMARY
-
+/*OVERVIEW
 The Kinematic_Tree base class stores information common to both joint and links like their position and orientation.
 The Joint class stores information specific to joints like axis, type of joint, and kinematic/dynamics at the joint frame.
 The Link class stores information specific to links like the mass and inertia of a link.
@@ -15,7 +18,6 @@ The Link class stores information specific to links like the mass and inertia of
 The ArticulatedSystems class takes the joints and links and links them into a tree, eliminates any fixed joints, 
 and determines the properties of the AS such as the DOF and whether it is a fixed bse or floating base. It is also 
 responsible for all of the algorithms (CRBA, RNE, and ABA).
-
 */
 
 typedef struct{
@@ -25,9 +27,8 @@ typedef struct{
 } Answers; //container to store the answers
 
 typedef struct{
-  Eigen::Matrix3d orien;
-  Eigen::Vector3d xyz;
   Eigen::Vector3d rpy;
+  Eigen::Vector3d xyz;
 } Origin; //stores the origin from the URDF file
 
 typedef struct{
@@ -85,10 +86,13 @@ Eigen::MatrixXd getXdot(Eigen::Vector3d r){
 
 class Link;
 class Joint;
+class ArticulatedSystem;
 
 class Kinematic_Tree{
   public:
     Origin origin;
+    Eigen::Matrix3d orientation;
+    Eigen::Vector3d position;
     Joint *parentJoint = NULL;
     std::string name;
 
@@ -96,19 +100,30 @@ class Kinematic_Tree{
     Kinematic_Tree(){
       origin.rpy.setZero();
       origin.xyz.setZero();
-      origin.orien.setZero();
+      orientation.setZero();
+      position.setZero();
     }
 
+    void setPos(Eigen::Vector3d pos){
+      position = pos;
+      set_pos = true;
+    }
+    Eigen::Vector3d getPos(){
+      if(set_pos){
+        return position;
+      }
+      return origin.xyz;;
+    }
     //this method sets the rotation matrix of the joint/link
     Eigen::Matrix3d setRot(Eigen::Matrix3d rot){
-      origin.orien = rot;
-      userotmat = true;
+      orientation = rot;
+      set_rot = true;
       return rot;
     }
     //this method returns the rotation matrix of the joint/link
     Eigen::Matrix3d getRot(){
-      if(userotmat){
-        return origin.orien;
+      if(set_rot){
+        return orientation;
       }
       double roll = origin.rpy[0], pitch = origin.rpy[1], yaw = origin.rpy[2];
       Eigen::Matrix3d Rx, Ry, Rz, R;
@@ -123,9 +138,16 @@ class Kinematic_Tree{
             0, 0, 1;
       return setRot(Rz*Ry*Rx);
     }
+  protected:
+    void reset(){
+      set_rot = false;
+      set_pos = false;
+    }
+    friend class ArticulatedSystem; //give access to reset()
 
   private:
-    bool userotmat = false; //toggle true if origin.orien is assigned
+    bool set_rot = false; //toggle true if origin.orien is assigned
+    bool set_pos = false;
 };
 
 class Joint : public Kinematic_Tree{
@@ -187,6 +209,14 @@ class Joint : public Kinematic_Tree{
       wrench.resize(6);
       wrench.setZero();
     }
+  protected:
+    void reset(){
+      if(!isBase) Kinematic_Tree::reset();
+      childjoints.clear();
+      childlinks.clear();
+    }
+    friend class ArticulatedSystem; //give access to reset()
+
   private:
     Eigen::VectorXd subspace(Eigen::Vector3d vec3){
       Eigen::VectorXd S(6);
@@ -214,6 +244,7 @@ class Link : public Kinematic_Tree{
     rigidbody RB(){
       return rigidbody{inertia_w, COM, mass};
     }
+
     Link(){
       inertia_b.setZero();
       inertia_w.setZero();
@@ -293,7 +324,7 @@ class ArticulatedSystem{
     }
     Eigen::VectorXd computeGeneralizedAcceleration() const{
       //ABA
-      root->accel.lin << 0, 0, 9.81;    //DOUBLE CHECK
+      root->accel.lin << 0, 0, 9.81;
       Eigen::VectorXd acceleration = ABA(root);
       if(floating){
         acceleration[2] -= 9.81;
@@ -303,10 +334,14 @@ class ArticulatedSystem{
 
   private:
     void makeTree(){
+      //reset all links
+      for(Link* link : links){
+        link->reset();
+      }
       //connect all links to joints and joints to links
       for(Joint* joint : joints){
-        joint->childjoints.clear();
-        joint->childlinks.clear();
+        //reset all joints
+        joint->reset();
         for(Link* link : links){
           if(joint->childlink == link->name){
             if(!link->virtual_link) joint->childlinks.push_back(link);
@@ -333,7 +368,7 @@ class ArticulatedSystem{
         
         switch(childjoint->type){
           case JointType::PRISMATIC:
-            childjoint->origin.xyz += childjoint->axis*gc(childjoint->gc_idx);
+            childjoint->setPos(childjoint->origin.xyz + childjoint->axis*gc(childjoint->gc_idx));
             break;
           case JointType::REVOLUTE:
             childjoint->setRot(childjoint->getRot() * Eigen::AngleAxisd(gc(childjoint->gc_idx), childjoint->axis).toRotationMatrix());
@@ -356,7 +391,7 @@ class ArticulatedSystem{
         //move all child joints
         for(Joint* childjoint : curjoint->childjoints){
           //find position and orientation of child joint in parent frame
-          childjoint->origin.xyz = curjoint->origin.xyz + curjoint->getRot()*childjoint->origin.xyz;
+          childjoint->setPos(curjoint->getPos() + curjoint->getRot()*childjoint->getPos());
           childjoint->setRot(curjoint->getRot()*childjoint->getRot());
 
           childjoint->parentJoint = parent;
@@ -365,7 +400,7 @@ class ArticulatedSystem{
         //move all child links
         for(Link* childlink : curjoint->childlinks){
           //find position and orientation of childlink in parent frame
-          childlink->origin.xyz = curjoint->origin.xyz + curjoint->getRot()*childlink->origin.xyz;
+          childlink->setPos(curjoint->getPos() + curjoint->getRot()*childlink->getPos());
           childlink->setRot(curjoint->getRot()*childlink->getRot());
 
           childlink->parentJoint = parent;
@@ -376,332 +411,341 @@ class ArticulatedSystem{
 
     //ALGORITHMS
     //CRBA
-    rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix) const{
-      //down path
-      rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
+    rigidbody CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix) const;
 
-      //For each body(link), find the COM and inertia in the world frame
-      //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the Link class
-      for(Link* childlink : curjoint->childlinks){
-        Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
-        childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
-        childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
-      }
+    //RNE - Returns the wrench at the current joint
+    Eigen::VectorXd RNE(Joint* curjoint, Eigen::Matrix3d rot, Eigen::VectorXd& b_vector) const;
 
-      //For each revolute joint, find the position and axis direction in the world frame
-      //Store these in Eigen::Vector3d w_dir and Eigen::Vector3d w_pos of the Joint class
-      for(Joint* childjoint : curjoint->childjoints){
-        Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
-        childjoint->w_dir = R*childjoint->axis;
-        childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
-      }
-
-      //recursively call CRBA for each child joint and also create new a composite body by combining the
-      //links of the current joint and the composite bodies of all child joints
-      rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
-      for (Joint* childjoint : curjoint->childjoints) {
-        rigidbody jointRB = CRBA(childjoint, rot, massmatrix);    //CRBA() called here
-        if(jointRB.m != 0) composite = joinbodies(composite, jointRB);
-      }
-      for(Link* childlink : curjoint->childlinks){
-        if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
-      }
-
-      //up path
-      Eigen::MatrixXd spatialInertial(6, 6);
-      Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
-      spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
-      spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
-      spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
-      spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
-
-      if(curjoint->isFloating){
-        //put the spatial inertial matrix in the top 6x6 lefthand corner of the mass matrix
-        massmatrix.block(0, 0, 6, 6) = spatialInertial;
-      }
-      else{
-        //compute and fill Mi,j for all i<=j
-        Joint* joint_i = curjoint;    //curjoint is joint j
-        Eigen::MatrixXd IR = Eigen::MatrixXd::Identity(6, 6);
-        //joint to joint coupling: 
-        while(!joint_i->isBase){
-          Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
-          IR.block(0, 3, 3, 3) = skew(rji);
-          massmatrix(joint_i->jointID, curjoint->jointID) = curjoint->S().transpose()*spatialInertial*IR*joint_i->S();
-          joint_i = joint_i->parentJoint;
-        }
-
-        //if floating base, find base to joint coupling:
-        if(floating){
-          Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
-          IR.block(0, 3, 3, 3) = skew(rji);
-          for(int i=0; i<6; i++){
-            Eigen::VectorXd S = Eigen::VectorXd::Zero(6);
-            S(i) = 1;
-            massmatrix(i, curjoint->jointID) = curjoint->S().transpose()*spatialInertial*IR*S;
-          }
-        }
-      }
-      return composite;
-    }
-
-    //RNE - Returns the wrench at the current joint.
-    Eigen::VectorXd RNE(Joint* curjoint, Eigen::Matrix3d rot, Eigen::VectorXd& b_vector) const{
-      //down path (compute acceleration)
-      rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
-      
-      //For each body(link), find the COM and inertia in the world frame
-      //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the link object
-      for(Link* childlink : curjoint->childlinks){
-        Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
-        childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
-        childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
-      }
-
-      //For each joint, find the position, axis direction, and angular velocity in the world frame
-      //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
-      for(Joint* childjoint : curjoint->childjoints){
-        Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
-        childjoint->w_dir = R*childjoint->axis;
-        childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
-
-        switch(childjoint->type){
-          case JointType::PRISMATIC:
-            childjoint->w_ang_vel = curjoint->w_ang_vel;
-            break;
-          case JointType::REVOLUTE:
-            childjoint->w_ang_vel = curjoint->w_ang_vel + gv(childjoint->jointID) * childjoint->w_dir; //angular velocity of rotating child frame
-            break;
-          case JointType::FIXED:
-            break;
-        }
-
-        //compute the linear acceleration of the child joint
-        childjoint->accel.lin = curjoint->accel.lin + skew(curjoint->accel.ang)*(childjoint->w_pos - curjoint->w_pos)
-                                + skew(curjoint->w_ang_vel)*skew(curjoint->w_ang_vel)*(childjoint->w_pos - curjoint->w_pos);
-        childjoint->accel.ang = curjoint->accel.ang;
-
-        //derivative of axis vector (wxr):
-        Eigen::Vector3d w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
-
-        switch(childjoint->type){
-          case JointType::PRISMATIC:
-            childjoint->accel.lin += w_dir_dot*gv(childjoint->jointID) + skew(curjoint->w_ang_vel)*childjoint->w_dir*gv(childjoint->jointID);
-            break;
-          case JointType::REVOLUTE:
-            //compute the angular acceleration of the child joint
-            childjoint->accel.ang += w_dir_dot*gv(childjoint->jointID);
-            break;
-          case JointType::FIXED:
-            break;
-        }
-        
-      }
-      //recursively call RNE for each child joint to get the net wrench at the current joint due to the reaction at child joints
-      Eigen::VectorXd wrench = Eigen::VectorXd::Zero(6);  //net wrench about current joint
-      for (Joint* childjoint : curjoint->childjoints) {
-        //compute matrix X to move wrench at child joint to wrench at parent joint
-        Eigen::MatrixXd X(6, 6);
-        Eigen::Vector3d r_pc = childjoint->w_pos - curjoint->w_pos;
-        X.block(0, 0, 3, 3) = Eigen::Matrix3d::Identity();
-        X.block(0, 3, 3, 3) = Eigen::Matrix3d::Zero();
-        X.block(3, 0, 3, 3) = skew(r_pc);
-        X.block(3, 3, 3, 3) = Eigen::Matrix3d::Identity();
-
-        wrench = wrench + X * RNE(childjoint, rot, b_vector);    //RNE() called here
-      }
-      //Combine the links of the current joint into one composite body
-      rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
-      for(Link* childlink : curjoint->childlinks){
-        if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
-      }
-      //up path
-      //Compute spatial inertia matrix about the current joint
-      Eigen::MatrixXd spatialInertial(6, 6);
-      Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
-      spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
-      spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
-      spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
-      spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
-
-      //Compute fictious force vector
-      Eigen::VectorXd fictious_forces(6);
-      fictious_forces.head(3) << composite.m * skew(curjoint->w_ang_vel) * skew(curjoint->w_ang_vel) * r_ac;
-      fictious_forces.tail(3) << skew(curjoint->w_ang_vel) * (composite.I - (composite.m * skew(r_ac) * skew(r_ac))) * curjoint->w_ang_vel;
-
-      //compute wrench at joint
-      curjoint->wrench = spatialInertial * curjoint->accel.get6D() + fictious_forces + wrench;
-
-      if(curjoint->isBase){
-        if(curjoint->isFloating){
-          //for floating base
-          b_vector.head(6) << curjoint->wrench;
-        }
-      }
-      else{
-        //find transmitted generalized force
-        b_vector[curjoint->jointID] = curjoint->S().dot(curjoint->wrench);
-      }
-      return curjoint->wrench;
-    }
-
-    //first part of ABA - traverse up and down recursively
-    Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot) const{
-      //down path (compute acceleration)
-      rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
-
-      //For each body(link), find the COM and inertia in the world frame
-      //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the link object (unnecessary now, but keep for simplicity)
-      //Combine the links of the current joint into one composite body
-      rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
-      for(Link* childlink : curjoint->childlinks){
-        Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
-        childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
-        childlink->COM = curjoint->w_pos + rot*childlink->origin.xyz;
-        if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
-      }
-
-      //Compute spatial inertia matrix about the current joint
-      Eigen::MatrixXd spatialInertial(6, 6);
-      Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
-      spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
-      spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
-      spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
-      spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
-      curjoint->RB.M = spatialInertial;
-
-      //Compute fictious force vector
-      Eigen::VectorXd fictious_forces(6);
-      fictious_forces.head(3) << composite.m * skew(curjoint->w_ang_vel) * skew(curjoint->w_ang_vel) * r_ac;
-      fictious_forces.tail(3) << skew(curjoint->w_ang_vel) * (composite.I - (composite.m * skew(r_ac) * skew(r_ac))) * curjoint->w_ang_vel;
-      curjoint->RB.b = fictious_forces;
-
-      //For each joint, find the position, axis direction, and angular velocity in the world frame
-      //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
-      for(Joint* childjoint : curjoint->childjoints){
-        Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
-        childjoint->w_dir = R*childjoint->axis;
-        childjoint->w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
-        childjoint->w_pos = curjoint->w_pos + rot*childjoint->origin.xyz;
-
-        switch(childjoint->type){
-          case JointType::PRISMATIC:
-            childjoint->w_ang_vel = curjoint->w_ang_vel;
-            break;
-          case JointType::REVOLUTE:
-            childjoint->w_ang_vel = curjoint->w_ang_vel + gv(childjoint->jointID) * childjoint->w_dir; //angular velocity of rotating child frame
-            break;
-          case JointType::FIXED:
-            break;
-        }
-
-        childjoint->w_lin_vel = curjoint->w_lin_vel + curjoint->w_ang_vel.cross(childjoint->w_pos - curjoint->w_pos);
-      }
-
-      //initialize articulated body properties to rigid body properties
-      curjoint->AB = curjoint->RB;
-
-      //Compute articulated body inertia and bias for current joint
-      for (Joint* childjoint : curjoint->childjoints) {
-        //compute matrix Xbp and Xbp_dot
-        Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
-        Eigen::MatrixXd Xbp = getX(r_pb);
-        Eigen::MatrixXd Xbp_dot;
-
-        switch(childjoint->type){
-          case JointType::PRISMATIC:
-            Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb) + childjoint->w_dir*gv(childjoint->jointID));
-            break;
-          case JointType::REVOLUTE:
-            Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
-            break;
-          case JointType::FIXED:
-            break;
-        }
-        
-        ///RECURSION CALLED HERE///
-        Joint::Inertial_body childAB = ABA1(childjoint, rot);
-
-        //Shortform symbols for terms of AB inertia formula
-        Eigen::MatrixXd M = childAB.M;
-        Eigen::VectorXd b = childAB.b;
-        Eigen::MatrixXd XbpT = Xbp.transpose();
-        Eigen::MatrixXd Xbp_dotT = Xbp_dot.transpose();
-        Eigen::VectorXd S = childjoint->S();
-        Eigen::MatrixXd ST = S.transpose();
-        Eigen::VectorXd Sdot = childjoint->Sdot();
-        Eigen::VectorXd W = curjoint->getTwist();
-        size_t j = childjoint->jointID;
-
-        curjoint->AB.M += Xbp * M * (-S*(ST*M*S).inverse()*(ST*M*XbpT) + XbpT);
-        curjoint->AB.b += Xbp * (M*(S*(ST*M*S).inverse()*(gf.segment(j,1) - ST*M*(Sdot*gv.segment(j,1) + Xbp_dotT*W) - ST*b) + Sdot*gv.segment(j,1) + Xbp_dotT*W) + b);
-      
-      }
-
-      return curjoint->AB;
-    }
-
-    //second part of ABA - compute the generalized acceleration from root to leaf
-    void ABA2(Joint* curjoint, Eigen::VectorXd& udot) const{
-
-      //Recursively compute udot
-      if(curjoint->isFloating){
-        curjoint->accel.set6D(curjoint->AB.M.inverse()*(gf.head(6) - curjoint->AB.b));
-        udot.head(6) << curjoint->accel.get6D();
-      }
-
-      for (Joint* childjoint : curjoint->childjoints) {
-        //compute matrix Xbp and Xbp_dot
-        Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
-        Eigen::MatrixXd Xbp = getX(r_pb);
-        Eigen::MatrixXd Xbp_dot;
-
-        switch(childjoint->type){
-          case JointType::PRISMATIC:
-            Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb) + childjoint->w_dir*gv(childjoint->jointID));
-            break;
-          case JointType::REVOLUTE:
-            Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
-            break;
-          case JointType::FIXED:
-            break;
-        }
-
-        //Shortform symbols for terms of equation for udot
-        Eigen::MatrixXd M = childjoint->AB.M;
-        Eigen::VectorXd b = childjoint->AB.b;
-        Eigen::MatrixXd XbpT = Xbp.transpose();
-        Eigen::MatrixXd Xbp_dotT = Xbp_dot.transpose();
-        Eigen::VectorXd S = childjoint->S();
-        Eigen::MatrixXd ST = S.transpose();
-        Eigen::VectorXd Sdot = childjoint->Sdot();
-        Eigen::VectorXd W = curjoint->getTwist();
-        Eigen::VectorXd Wdot = curjoint->accel.get6D();
-        size_t j = childjoint->jointID;
-
-        udot[j] = ((ST*M*S).inverse() * (gf.segment(j,1) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - ST*b)).value();
-        childjoint->accel.set6D(S*udot(j) + Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot);
-
-        ABA2(childjoint, udot);
-      }
-    }
-
-    Eigen::VectorXd ABA(Joint* base) const{
-      //compute kinematics and dynamics down the tree needed to complete NE of each body except the force
-      //Compute M^A and b^A up the tree
-      Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
-      ABA1(base, rot);
-
-      //from the root to the leaves, compute udot and w
-      Eigen::VectorXd udot = Eigen::VectorXd::Zero(dof);
-      ABA2(base, udot);
-      return udot;
-    }
-
-  //every joint and link has a parent joint except the base joint
-  //each joint has a child joint and child link
-  //each joint knows its parent and child links
+    //ABA
+    Eigen::VectorXd ABA(Joint* base) const;
+    Joint::Inertial_body ABA1(Joint* curjoint, Eigen::Matrix3d rot) const; //first part of ABA - traverse up and down recursively
+    void ABA2(Joint* curjoint, Eigen::VectorXd& udot) const; //second part of ABA - compute the generalized acceleration from root to leaf
 };
+
+
+//ALGORITHM DEFINITIONS
+
+rigidbody ArticulatedSystem::CRBA(Joint* curjoint, Eigen::Matrix3d rot, Eigen::MatrixXd& massmatrix) const{
+  //down path
+  rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
+
+  //For each body(link), find the COM and inertia in the world frame
+  //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the Link class
+  for(Link* childlink : curjoint->childlinks){
+    Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
+    childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
+    childlink->COM = curjoint->w_pos + rot*childlink->getPos();
+  }
+
+  //For each revolute joint, find the position and axis direction in the world frame
+  //Store these in Eigen::Vector3d w_dir and Eigen::Vector3d w_pos of the Joint class
+  for(Joint* childjoint : curjoint->childjoints){
+    Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
+    childjoint->w_dir = R*childjoint->axis;
+    childjoint->w_pos = curjoint->w_pos + rot*childjoint->getPos();
+  }
+
+  //recursively call CRBA for each child joint and also create new a composite body by combining the
+  //links of the current joint and the composite bodies of all child joints
+  rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
+  for (Joint* childjoint : curjoint->childjoints) {
+    rigidbody jointRB = CRBA(childjoint, rot, massmatrix);    //CRBA() called here
+    if(jointRB.m != 0) composite = joinbodies(composite, jointRB);
+  }
+  for(Link* childlink : curjoint->childlinks){
+    if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
+  }
+
+  //up path
+  Eigen::MatrixXd spatialInertial(6, 6);
+  Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
+  spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
+  spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
+  spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
+  spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
+
+  if(curjoint->isFloating){
+    //put the spatial inertial matrix in the top 6x6 lefthand corner of the mass matrix
+    massmatrix.block(0, 0, 6, 6) = spatialInertial;
+  }
+  else{
+    //compute and fill Mi,j for all i<=j
+    Joint* joint_i = curjoint;    //curjoint is joint j
+    Eigen::MatrixXd IR = Eigen::MatrixXd::Identity(6, 6);
+    //joint to joint coupling: 
+    while(!joint_i->isBase){
+      Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
+      IR.block(0, 3, 3, 3) = skew(rji);
+      massmatrix(joint_i->jointID, curjoint->jointID) = curjoint->S().transpose()*spatialInertial*IR*joint_i->S();
+      joint_i = joint_i->parentJoint;
+    }
+
+    //if floating base, find base to joint coupling:
+    if(floating){
+      Eigen::Vector3d rji = joint_i->w_pos - curjoint->w_pos;
+      IR.block(0, 3, 3, 3) = skew(rji);
+      for(int i=0; i<6; i++){
+        Eigen::VectorXd S = Eigen::VectorXd::Zero(6);
+        S(i) = 1;
+        massmatrix(i, curjoint->jointID) = curjoint->S().transpose()*spatialInertial*IR*S;
+      }
+    }
+  }
+  return composite;
+}
+
+//RNE - Returns the wrench at the current joint.
+Eigen::VectorXd ArticulatedSystem::RNE(Joint* curjoint, Eigen::Matrix3d rot, Eigen::VectorXd& b_vector) const{
+  //down path (compute acceleration)
+  rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
+  
+  //For each body(link), find the COM and inertia in the world frame
+  //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the link object
+  for(Link* childlink : curjoint->childlinks){
+    Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
+    childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
+    childlink->COM = curjoint->w_pos + rot*childlink->getPos();
+  }
+
+  //For each joint, find the position, axis direction, and angular velocity in the world frame
+  //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
+  for(Joint* childjoint : curjoint->childjoints){
+    Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
+    childjoint->w_dir = R*childjoint->axis;
+    childjoint->w_pos = curjoint->w_pos + rot*childjoint->getPos();
+
+    switch(childjoint->type){
+      case JointType::PRISMATIC:
+        childjoint->w_ang_vel = curjoint->w_ang_vel;
+        break;
+      case JointType::REVOLUTE:
+        childjoint->w_ang_vel = curjoint->w_ang_vel + gv(childjoint->jointID) * childjoint->w_dir; //angular velocity of rotating child frame
+        break;
+      case JointType::FIXED:
+        break;
+    }
+
+    //compute the linear acceleration of the child joint
+    childjoint->accel.lin = curjoint->accel.lin + skew(curjoint->accel.ang)*(childjoint->w_pos - curjoint->w_pos)
+                            + skew(curjoint->w_ang_vel)*skew(curjoint->w_ang_vel)*(childjoint->w_pos - curjoint->w_pos);
+    childjoint->accel.ang = curjoint->accel.ang;
+
+    //derivative of axis vector (wxr):
+    Eigen::Vector3d w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
+
+    switch(childjoint->type){
+      case JointType::PRISMATIC:
+        childjoint->accel.lin += w_dir_dot*gv(childjoint->jointID) + skew(curjoint->w_ang_vel)*childjoint->w_dir*gv(childjoint->jointID);
+        break;
+      case JointType::REVOLUTE:
+        //compute the angular acceleration of the child joint
+        childjoint->accel.ang += w_dir_dot*gv(childjoint->jointID);
+        break;
+      case JointType::FIXED:
+        break;
+    }
+    
+  }
+  //recursively call RNE for each child joint to get the net wrench at the current joint due to the reaction at child joints
+  Eigen::VectorXd wrench = Eigen::VectorXd::Zero(6);  //net wrench about current joint
+  for (Joint* childjoint : curjoint->childjoints) {
+    //compute matrix X to move wrench at child joint to wrench at parent joint
+    Eigen::MatrixXd X(6, 6);
+    Eigen::Vector3d r_pc = childjoint->w_pos - curjoint->w_pos;
+    X.block(0, 0, 3, 3) = Eigen::Matrix3d::Identity();
+    X.block(0, 3, 3, 3) = Eigen::Matrix3d::Zero();
+    X.block(3, 0, 3, 3) = skew(r_pc);
+    X.block(3, 3, 3, 3) = Eigen::Matrix3d::Identity();
+
+    wrench = wrench + X * RNE(childjoint, rot, b_vector);    //RNE() called here
+  }
+  //Combine the links of the current joint into one composite body
+  rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
+  for(Link* childlink : curjoint->childlinks){
+    if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
+  }
+  //up path
+  //Compute spatial inertia matrix about the current joint
+  Eigen::MatrixXd spatialInertial(6, 6);
+  Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
+  spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
+  spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
+  spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
+  spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
+
+  //Compute fictious force vector
+  Eigen::VectorXd fictious_forces(6);
+  fictious_forces.head(3) << composite.m * skew(curjoint->w_ang_vel) * skew(curjoint->w_ang_vel) * r_ac;
+  fictious_forces.tail(3) << skew(curjoint->w_ang_vel) * (composite.I - (composite.m * skew(r_ac) * skew(r_ac))) * curjoint->w_ang_vel;
+
+  //compute wrench at joint
+  curjoint->wrench = spatialInertial * curjoint->accel.get6D() + fictious_forces + wrench;
+
+  if(curjoint->isBase){
+    if(curjoint->isFloating){
+      //for floating base
+      b_vector.head(6) << curjoint->wrench;
+    }
+  }
+  else{
+    //find transmitted generalized force
+    b_vector[curjoint->jointID] = curjoint->S().dot(curjoint->wrench);
+  }
+  return curjoint->wrench;
+}
+
+Eigen::VectorXd ArticulatedSystem::ABA(Joint* base) const{
+  //compute kinematics and dynamics down the tree needed to complete NE of each body except the force
+  //Compute M^A and b^A up the tree
+  Eigen::Matrix3d rot = Eigen::Matrix3d::Identity();
+  ABA1(base, rot);
+
+  //from the root to the leaves, compute udot and w
+  Eigen::VectorXd udot = Eigen::VectorXd::Zero(dof);
+  ABA2(base, udot);
+  return udot;
+}
+
+//first part of ABA - traverse up and down recursively
+Joint::Inertial_body ArticulatedSystem::ABA1(Joint* curjoint, Eigen::Matrix3d rot) const{
+  //down path (compute acceleration)
+  rot = rot*curjoint->getRot(); //get the orientaion of the current joint relative to the world frame
+
+  //For each body(link), find the COM and inertia in the world frame
+  //Store these in Eigen::Matrix3d inertia_w and Eigen::Vector3d COM of the link object (unnecessary now, but keep for simplicity)
+  //Combine the links of the current joint into one composite body
+  rigidbody composite{Eigen::Matrix3d::Zero(), Eigen::Vector3d::Zero(), 0.0};
+  for(Link* childlink : curjoint->childlinks){
+    Eigen::Matrix3d R = rot*childlink->getRot(); //get the orientaion of the child links relative to the world frame
+    childlink->inertia_w = R*(childlink->inertia_b)*R.transpose(); //find inertia in world frame for each link
+    childlink->COM = curjoint->w_pos + rot*childlink->getPos();
+    if(childlink->mass != 0) composite = joinbodies(composite, childlink->RB());
+  }
+
+  //Compute spatial inertia matrix about the current joint
+  Eigen::MatrixXd spatialInertial(6, 6);
+  Eigen::Vector3d r_ac = composite.COM - curjoint->w_pos;
+  spatialInertial.block(0, 0, 3, 3) = composite.m * Eigen::Matrix3d::Identity();
+  spatialInertial.block(0, 3, 3, 3) = -composite.m * skew(r_ac);
+  spatialInertial.block(3, 0, 3, 3) = composite.m * skew(r_ac);
+  spatialInertial.block(3, 3, 3, 3) = composite.I - (composite.m * skew(r_ac) * skew(r_ac));
+  curjoint->RB.M = spatialInertial;
+
+  //Compute fictious force vector
+  Eigen::VectorXd fictious_forces(6);
+  fictious_forces.head(3) << composite.m * skew(curjoint->w_ang_vel) * skew(curjoint->w_ang_vel) * r_ac;
+  fictious_forces.tail(3) << skew(curjoint->w_ang_vel) * (composite.I - (composite.m * skew(r_ac) * skew(r_ac))) * curjoint->w_ang_vel;
+  curjoint->RB.b = fictious_forces;
+
+  //For each joint, find the position, axis direction, and angular velocity in the world frame
+  //Store these in Eigen::Vector3d w_dir, Eigen::Vector3d w_pos, and Eigen::Vector3d w_ang_vel of the Joint class
+  for(Joint* childjoint : curjoint->childjoints){
+    Eigen::Matrix3d R = rot*childjoint->getRot();    //axis is defined in rotating joint frame (the j' frame)
+    childjoint->w_dir = R*childjoint->axis;
+    childjoint->w_dir_dot = curjoint->w_ang_vel.cross(childjoint->w_dir);
+    childjoint->w_pos = curjoint->w_pos + rot*childjoint->getPos();
+
+    switch(childjoint->type){
+      case JointType::PRISMATIC:
+        childjoint->w_ang_vel = curjoint->w_ang_vel;
+        break;
+      case JointType::REVOLUTE:
+        childjoint->w_ang_vel = curjoint->w_ang_vel + gv(childjoint->jointID) * childjoint->w_dir; //angular velocity of rotating child frame
+        break;
+      case JointType::FIXED:
+        break;
+    }
+
+    childjoint->w_lin_vel = curjoint->w_lin_vel + curjoint->w_ang_vel.cross(childjoint->w_pos - curjoint->w_pos);
+  }
+
+  //initialize articulated body properties to rigid body properties
+  curjoint->AB = curjoint->RB;
+
+  //Compute articulated body inertia and bias for current joint
+  for (Joint* childjoint : curjoint->childjoints) {
+    //compute matrix Xbp and Xbp_dot
+    Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
+    Eigen::MatrixXd Xbp = getX(r_pb);
+    Eigen::MatrixXd Xbp_dot;
+
+    switch(childjoint->type){
+      case JointType::PRISMATIC:
+        Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb) + childjoint->w_dir*gv(childjoint->jointID));
+        break;
+      case JointType::REVOLUTE:
+        Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
+        break;
+      case JointType::FIXED:
+        break;
+    }
+    
+    ///RECURSION CALLED HERE///
+    Joint::Inertial_body childAB = ABA1(childjoint, rot);
+
+    //Shortform symbols for terms of AB inertia formula
+    Eigen::MatrixXd M = childAB.M;
+    Eigen::VectorXd b = childAB.b;
+    Eigen::MatrixXd XbpT = Xbp.transpose();
+    Eigen::MatrixXd Xbp_dotT = Xbp_dot.transpose();
+    Eigen::VectorXd S = childjoint->S();
+    Eigen::MatrixXd ST = S.transpose();
+    Eigen::VectorXd Sdot = childjoint->Sdot();
+    Eigen::VectorXd W = curjoint->getTwist();
+    size_t j = childjoint->jointID;
+
+    curjoint->AB.M += Xbp * M * (-S*(ST*M*S).inverse()*(ST*M*XbpT) + XbpT);
+    curjoint->AB.b += Xbp * (M*(S*(ST*M*S).inverse()*(gf.segment(j,1) - ST*M*(Sdot*gv.segment(j,1) + Xbp_dotT*W) - ST*b) + Sdot*gv.segment(j,1) + Xbp_dotT*W) + b);
+  
+  }
+
+  return curjoint->AB;
+}
+
+//second part of ABA - compute the generalized acceleration from root to leaf
+void ArticulatedSystem::ABA2(Joint* curjoint, Eigen::VectorXd& udot) const{
+
+  //Recursively compute udot
+  if(curjoint->isFloating){
+    curjoint->accel.set6D(curjoint->AB.M.inverse()*(gf.head(6) - curjoint->AB.b));
+    udot.head(6) << curjoint->accel.get6D();
+  }
+
+  for (Joint* childjoint : curjoint->childjoints) {
+    //compute matrix Xbp and Xbp_dot
+    Eigen::Vector3d r_pb = childjoint->w_pos - curjoint->w_pos;
+    Eigen::MatrixXd Xbp = getX(r_pb);
+    Eigen::MatrixXd Xbp_dot;
+
+    switch(childjoint->type){
+      case JointType::PRISMATIC:
+        Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb) + childjoint->w_dir*gv(childjoint->jointID));
+        break;
+      case JointType::REVOLUTE:
+        Xbp_dot = getXdot(curjoint->w_ang_vel.cross(r_pb));
+        break;
+      case JointType::FIXED:
+        break;
+    }
+
+    //Shortform symbols for terms of equation for udot
+    Eigen::MatrixXd M = childjoint->AB.M;
+    Eigen::VectorXd b = childjoint->AB.b;
+    Eigen::MatrixXd XbpT = Xbp.transpose();
+    Eigen::MatrixXd Xbp_dotT = Xbp_dot.transpose();
+    Eigen::VectorXd S = childjoint->S();
+    Eigen::MatrixXd ST = S.transpose();
+    Eigen::VectorXd Sdot = childjoint->Sdot();
+    Eigen::VectorXd W = curjoint->getTwist();
+    Eigen::VectorXd Wdot = curjoint->accel.get6D();
+    size_t j = childjoint->jointID;
+
+    udot[j] = ((ST*M*S).inverse() * (gf.segment(j,1) - ST*M*(Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot) - ST*b)).value();
+    childjoint->accel.set6D(S*udot(j) + Sdot*gv(j) + Xbp_dotT*W + XbpT*Wdot);
+
+    ABA2(childjoint, udot);
+  }
+}
 
 //tree traversal for debugging
 void traverse(Joint* joint){
@@ -719,47 +763,54 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   Answers answer;
 
   ArticulatedSystem anymal, arm;
-  Joint j1, j2, j3, J1, J2, J3, J4;
-  Link l1, l2, l3, L1, L2, L3, L4;
+  Joint j1, j2, j3, J1, J2, J3, J4, J5;
+  Link l1, l2, l3, L1, L2, L3, L4, L5;
   
   //first fixed joint is the base joint - it has no parent link
   //joints and links must be added in order in URDF, starting with base joint
 
-  j1.isBase = true;
-  j1.isFloating = true;
-  j1.childlink = "base";
+  // j1.isBase = true;
+  // j1.isFloating = true;
+  // j1.childlink = "base";
 
-  l1.name = "base";
-  l1.mass = 2;
-  l1.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
+  // l1.name = "base";
+  // l1.mass = 2;
+  // l1.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
 
-  j2.type = JointType::REVOLUTE;
-  j2.axis << 1,0,0;
-  j2.parentlink = "base";
-  j2.childlink = "LF_HAA";
-  j2.origin.rpy << 2.61799387799, 0, 0.0;
-  j2.origin.xyz << 0.2999, 0.104, 0.0;
+  // j2.type = JointType::REVOLUTE;
+  // j2.axis << 1,0,0;
+  // j2.parentlink = "base";
+  // j2.childlink = "LF_HAA";
+  // j2.origin.rpy << 2.61799387799, 0, 0.0;
+  // j2.origin.xyz << 0.2999, 0.104, 0.0;
 
-  l2.name = "LF_HAA";
-  l2.origin.xyz << -0.063, 7e-05, 0.00046;
-  l2.mass = 2.04;
-  l2.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
+  // l2.name = "LF_HAA";
+  // l2.origin.xyz << -0.063, 7e-05, 0.00046;
+  // l2.mass = 2.04;
+  // l2.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
 
-  j3.type = JointType::REVOLUTE;
-  j3.parentlink = "LF_HAA";
-  j3.childlink = "LF_HIP";
-  j3.axis << 1,0,0;
+  // j3.type = JointType::REVOLUTE;
+  // j3.parentlink = "LF_HAA";
+  // j3.childlink = "LF_HIP";
+  // j3.axis << 1,0,0;
 
-  l3.name = "LF_HIP";
-  l3.mass = 0.01;
-  l3.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
+  // l3.name = "LF_HIP";
+  // l3.mass = 0.01;
+  // l3.inertia_b = inertia_tensor(0.001,0,0,0.001,0,0.001);
 
-  anymal.addjoint(&j1);
-  anymal.addlink(&l1);
-  anymal.addjoint(&j2);
-  anymal.addlink(&l2);
-  anymal.addjoint(&j3);
-  anymal.addlink(&l3);
+  // anymal.addjoint(&j1);
+  // anymal.addlink(&l1);
+  // anymal.addjoint(&j2);
+  // anymal.addlink(&l2);
+  // anymal.addjoint(&j3);
+  // anymal.addlink(&l3);
+
+  // //set gc,gv,gf of anymal
+  // anymal.setState(gc, gv);
+  // anymal.setGeneralizedForce(gf);
+  // answer.massmatrix = anymal.getMassMatrix();
+  // answer.nonlinearities = anymal.getNonlinearities();
+  // answer.accel = anymal.computeGeneralizedAcceleration();
     
   //URDF FOR /2DrobotArm/robot_3D.urdf
   J1.isBase = true;
@@ -798,7 +849,7 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   J4.parentlink = "link3";
   J4.childlink = "link4";
   J4.origin.xyz << 0,0,0.3;
-  J4.type = JointType::PRISMATIC;
+  J4.type = JointType::REVOLUTE;
   J4.axis << 0,1,0;
   arm.addjoint(&J4);
 
@@ -808,19 +859,25 @@ inline Answers computeSolution (const Eigen::VectorXd& gc, const Eigen::VectorXd
   L4.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
   arm.addlink(&L4);
 
-  //set gc,gv,gf of anymal
-  anymal.setState(gc, gv);
-  anymal.setGeneralizedForce(gf);
-  answer.massmatrix = anymal.getMassMatrix();
-  answer.nonlinearities = anymal.getNonlinearities();
-  answer.accel = anymal.computeGeneralizedAcceleration();
+  J5.parentlink = "link3";
+  J5.childlink = "link5";
+  J5.origin.xyz << 0,0,0.3;
+  J5.type = JointType::PRISMATIC;
+  J5.axis << 0,1,0;
+  arm.addjoint(&J5);
 
-  // //set gc,gv,gf of arm
-  // arm.setState(gc, gv);
-  // arm.setGeneralizedForce(gf);
+  L5.name = "link5";
+  L5.origin.xyz << 0.,0.,0.2;
+  L5.mass = 1;
+  L5.inertia_b = inertia_tensor(0.001, 0, 0, 0.001, 0, 0.001);
+  arm.addlink(&L5);
+
+  //set gc,gv,gf of arm - this can only be called once for now
+  arm.setState(gc, gv);
+  arm.setGeneralizedForce(gf);
   // answer.massmatrix = arm.getMassMatrix();
   // answer.nonlinearities = arm.getNonlinearities();
-  // answer.accel = arm.computeGeneralizedAcceleration();
+  answer.accel = arm.computeGeneralizedAcceleration();
 
   return answer;
 }

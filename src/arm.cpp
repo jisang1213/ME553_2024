@@ -47,7 +47,8 @@ int main(int argc, char* argv[]) {
     if(error < 1e-8)
       std::cout<<"CRBA passed "<<std::endl;
     else
-      std::cout<<"CRBA failed "<<std::endl; 
+      std::cout<<"CRBA failed "<<std::endl;
+    
 
     //RNE TESTER
     Eigen::VectorXd nl = getNonlinearities(gc, gv);
@@ -69,7 +70,6 @@ int main(int argc, char* argv[]) {
       std::cout<<"ABA passed "<<std::endl;
     else 
       std::cout<<"ABA failed " <<std::endl;
-
   }
   
   return 0;
